@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.5.0)
 
+# 交叉编译工具链
+include(cross.cmake)
+
 # 基础路径与项目名称配置
 set(CURRENT_DIR ${CMAKE_CURRENT_LIST_DIR})
 get_filename_component(PARENT_DIR ${CURRENT_DIR}/.. ABSOLUTE)  
@@ -17,9 +20,6 @@ set(COMMON_FLAGS "-O3 -march=loongarch64 -mtune=loongarch64 -fPIC -ffunction-sec
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_FLAGS} -pthread -Wno-delete-non-virtual-dtor -Wno-placement-new")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_FLAGS}")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
-
-# 交叉编译工具链
-include(cross.cmake)
 
 # OpenCV依赖配置
 set(CMAKE_PREFIX_PATH "/opt/ls_2k0300_env/opencv_4_10_build") 
