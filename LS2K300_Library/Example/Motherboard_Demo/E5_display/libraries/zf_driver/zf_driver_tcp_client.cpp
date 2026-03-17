@@ -182,7 +182,7 @@ uint32 zf_driver_tcp_client::send_data(const uint8 *buff, uint32 length)
                 // 非阻塞模式：发送缓冲区满，暂时无法发送，延时后重发
                 printf("send_data: buffer full, retry(%d/%d), remain %d bytes\r\n", 
                        retry_count + 1, m_max_retry, length - total_sent);
-                // usleep(m_retry_interval * 1000); // 毫秒转微秒
+                usleep(m_retry_interval * 1000); // 毫秒转微秒
                 retry_count++;
             }
             else
