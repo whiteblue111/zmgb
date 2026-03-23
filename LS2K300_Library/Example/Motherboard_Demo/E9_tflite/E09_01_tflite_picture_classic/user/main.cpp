@@ -94,24 +94,26 @@ int main(int, char**)
     tflite::MicroMutableOpResolver<TFLITE_OP_RESOLVER_MAX_NUM> resolver;
 
     /* 添加所有可能会用到的算子 */
-	resolver.AddConv2D();
-	resolver.AddDepthwiseConv2D();
-	resolver.AddMaxPool2D();
-	resolver.AddFullyConnected();
-	resolver.AddRelu6();
-	resolver.AddSoftmax();
-	resolver.AddReshape();
-	resolver.AddShape();
-	resolver.AddSlice();
-	resolver.AddQuantize();
-	resolver.AddDequantize();
-	resolver.AddCast();
-	resolver.AddSqueeze();
-	resolver.AddExpandDims();
-	resolver.AddConcatenation();
-	resolver.AddTranspose();
-	resolver.AddStridedSlice();
-	resolver.AddPack();
+	TF_LITE_ENSURE_STATUS(resolver.AddConv2D());
+	TF_LITE_ENSURE_STATUS(resolver.AddDepthwiseConv2D());
+	TF_LITE_ENSURE_STATUS(resolver.AddMaxPool2D());
+	TF_LITE_ENSURE_STATUS(resolver.AddFullyConnected());
+	TF_LITE_ENSURE_STATUS(resolver.AddRelu6());
+	TF_LITE_ENSURE_STATUS(resolver.AddSoftmax());
+	TF_LITE_ENSURE_STATUS(resolver.AddReshape());
+	TF_LITE_ENSURE_STATUS(resolver.AddShape());
+	TF_LITE_ENSURE_STATUS(resolver.AddQuantize());
+	TF_LITE_ENSURE_STATUS(resolver.AddDequantize());
+	TF_LITE_ENSURE_STATUS(resolver.AddCast());
+	TF_LITE_ENSURE_STATUS(resolver.AddSqueeze());
+	TF_LITE_ENSURE_STATUS(resolver.AddExpandDims());
+	TF_LITE_ENSURE_STATUS(resolver.AddConcatenation());
+	TF_LITE_ENSURE_STATUS(resolver.AddTranspose());
+	TF_LITE_ENSURE_STATUS(resolver.AddStridedSlice());
+	TF_LITE_ENSURE_STATUS(resolver.AddPack());
+    TF_LITE_ENSURE_STATUS(resolver.AddLogistic());
+    TF_LITE_ENSURE_STATUS(resolver.AddMean());
+    TF_LITE_ENSURE_STATUS(resolver.AddAdd());
 
     // 创建模型解析器并分配张量空间（使用宏定义指定张量空间大小）
     uint8_t tensor_arena[TENSOR_ARENA_SIZE];
