@@ -2,11 +2,10 @@
 
 ## 1、下载相关软件以及系统
 
-下载https://gitee.com/seekfree/LS2K0300_Library到本地电脑。
+通过网盘分享的文件：龙芯 2k300 U盘刷系统固件以及软件
+链接: https://pan.baidu.com/s/1GasU6D4qpx4qzJ2VHXF9Lw?pwd=kd8r 提取码: kd8r
 
-找到这两个文件，复制到桌面。
-
-![image-20260126165834380](./resource/image-20260126165834380.png)
+![image-20260328100115467](./resource/image-20260328100115467.png)
 
 <DiskGenius.exe>这个软件是磁盘格式化软件，我们后续需要用这个软件将U盘格式化为EXT4格式。
 
