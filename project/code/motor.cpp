@@ -1,195 +1,251 @@
-// #include "zf_common_headfile.hpp"
-// #include "motor.hpp"
-// /* ---------------------------------- imu相关 --------------------------------- */
-// int16 imu_acc_x,imu_acc_y,imu_acc_z;
-// int16 imu_gyro_x,imu_gyro_y,imu_gyro_z;
-// zf_device_imu imu_dev;
-// float angle_yaw = 0;       // 角度
-// float zero_point = 0;      // imu零点
-// int8 zero_point_count = 0; // imu零点计数
-// float yaw_speed = 0;       // yaw角速度 °/s
-// #define IMU_ZERO_COUNT 50  // imu零点计数
-// /* ---------------------------------- 编码器相关 --------------------------------- */
-// #define ENCODER_LINE_NUM 2340 //  确定编码器线数
-// #define WHEEL_RADIUS 0.0325   // 确定 轮子半径
-// int16 encoder_count_l = 0;    // 左电机编码器计数
-// int16 encoder_count_r = 0;    // 右电机编码器计数
-// float encoder_distance = 0.0; // 编码器记录行驶距离
-// /* ---------------------------------- PID相关 --------------------------------- */
-// #define dead_least_r 0  //待确认！！！
-// #define dead_least_l 0  //待确认！！！
-// int16 pwm_r = dead_least_r; // 右电机PWM值
-// int16 pwm_l = dead_least_l; // 左电机PWM值
-// bool stop = 0;
-// /*------------------------------------电机相关-----------------------------------*/
-// #define MAX_DUTY        (30 )   // 最大 MAX_DUTY% 占空比
-// // 在设备树中，设置的10000。如果要修改，需要与设备树对应。
-// #define MOTOR1_PWM_DUTY_MAX    (drv8701e_pwm_1_info.duty_max)       
-// // 在设备树中，设置的10000。如果要修改，需要与设备树对应。 
-// #define MOTOR2_PWM_DUTY_MAX    (drv8701e_pwm_2_info.duty_max)   
-// #define PWM_1_PATH        ZF_PWM_MOTOR_1
-// #define DIR_1_PATH        ZF_GPIO_MOTOR_1
+#include "motor.hpp"  
+#include "pid.hpp"  
+#include "zf_common_headfile.hpp"  
+  
+/* ====================== 设备对象（模块私有） ====================== */  
+static zf_driver_gpio  drv8701e_dir_1(DIR_1_PATH, O_RDWR); // 右  
+static zf_driver_gpio  drv8701e_dir_2(DIR_2_PATH, O_RDWR); // 左  
+static zf_driver_pwm   drv8701e_pwm_1(PWM_1_PATH);  
+static zf_driver_pwm   drv8701e_pwm_2(PWM_2_PATH);  
+static struct pwm_info drv8701e_pwm_1_info;  
+static struct pwm_info drv8701e_pwm_2_info;  
+  
+#define MOTOR1_PWM_DUTY_MAX (drv8701e_pwm_1_info.duty_max)  
+#define MOTOR2_PWM_DUTY_MAX (drv8701e_pwm_2_info.duty_max)  
+  
+static zf_driver_encoder encoder_quad_1(ENCODER_QUAD_1_PATH); // 左  
+static zf_driver_encoder encoder_quad_2(ENCODER_QUAD_2_PATH); // 右  
+  
+extern volatile uint32_t g_speed_loop_cnt;  
+  
+/* ====================== 全局状态定义 ====================== */  
+motor_param_t motor_l,motor_r;  
+float loss_pass = 0.4;//编码器低通滤波系数  
+volatile float g_speed_l = 0.0f;  
+volatile float g_speed_r = 0.0f;  
+volatile float g_speed   = 0.0f;  
+volatile int16 g_enc_l   = 0;  
+volatile int16 g_enc_r   = 0;  
+//编码器累计度数  
+volatile int16 total_enc_l = 0;  
+volatile int16 total_enc_r = 0;  
+  
+  
 
-// #define PWM_2_PATH        ZF_PWM_MOTOR_2
-// #define DIR_2_PATH        ZF_GPIO_MOTOR_2
-// zf_driver_pit pit_timer;
+  
+/* ====================== PID结构体定义 ====================== */  
+/*  
+ * 速度环：增量式PID  
+ *  
+ * 角度环：位置式PID  
+ */  
+// PID_Inc_Datatypedef pid_speed_l = PID_INC_INIT(89.25f, 11.38f, 0.02f);  
+// PID_Inc_Datatypedef pid_speed_r = PID_INC_INIT(89.25f, 11.38f, 0.02f); 
+// PID_Pos_Datatypedef pid_dir     = PID_POS_INIT(0.0f, 0.0f,  0.0f, 0.0f);  
+// PD_Double  pd_yaw               = PD_DOUBLE_INIT(0.03f, 0.0f, 0.0f, 0.018f);  
+  
+PID_Inc_Datatypedef pid_speed_l = PID_INC_INIT(90.00f, 30.00f, 0.0f);  
+PID_Inc_Datatypedef pid_speed_r = PID_INC_INIT(90.00f, 30.00f, 0.0f); 
+PID_Pos_Datatypedef pid_dir     = PID_POS_INIT(0.0f, 0.0f,  0.0f, 0.0f);  
+PD_Double  pd_yaw               = PD_DOUBLE_INIT(0.013f, 0.0008f, 0.0f, 0.008f); //双pd角度环
+PID_Pos_Datatypedef pid_yaw_spd = PID_POS_INIT(0.0, 0.0, 0.0, 0.0);
+/* ====================== 增量式速度环内部累计占空比 ====================== */  
+static float duty_l_out = 0.0f;  
+static float duty_r_out = 0.0f;  
+  
+  
+  
+  
+/* ====================== motor_init ====================== */  
+void motor_init()  
+{  
+    drv8701e_pwm_1.get_dev_info(&drv8701e_pwm_1_info);  
+    drv8701e_pwm_2.get_dev_info(&drv8701e_pwm_2_info);  
+}  
+  
+/* ====================== motor_stop ====================== */  
+void motor_stop()  
+{  
+    drv8701e_pwm_1.set_duty(0);  
+    drv8701e_pwm_2.set_duty(0);  
+}  
+  
+/* ====================== motor_set_lr ====================== */  
+void motor_set_lr(int duty_l, int duty_r)  
+{  
+    duty_l = apply_smooth_deadzone(duty_l,DEAD_L,MOTOR_DEAD_RAMP_WIDTH);  
+    duty_r = apply_smooth_deadzone(duty_r,DEAD_R,MOTOR_DEAD_RAMP_WIDTH);  
+    duty_l = limit_int(duty_l, -MAX_PWM, MAX_PWM);  
+    duty_r = limit_int(duty_r, -MAX_PWM, MAX_PWM);  
+  
+  
+  
+    /* 左轮（电机2） */  
+    if (duty_l >= 0)  
+    {  
+        drv8701e_dir_2.set_level(1);  
+        drv8701e_pwm_2.set_duty(duty_l );  
+    }  
+    else  
+    {  
+        drv8701e_dir_2.set_level(0);  
+        drv8701e_pwm_2.set_duty(-duty_l);  
+    }  
+  
+    /* 右轮（电机1） */  
+    if (duty_r >= 0)  
+    {  
+        drv8701e_dir_1.set_level(1);  
+        drv8701e_pwm_1.set_duty(duty_r );  
+    }  
+    else  
+    {  
+        drv8701e_dir_1.set_level(0);  
+        drv8701e_pwm_1.set_duty((-duty_r) );  
+    }  
+}  
+/*--------------------------------------------编码器读取-------------------------------------------------*/  
+void get_enconder()  
+{  
+    motor_l.enc = -encoder_quad_1.get_count();  //编码器完全相同，所以一正一负  
+    motor_r.enc =  encoder_quad_2.get_count();  
 
-// struct pwm_info drv8701e_pwm_1_info;
-// struct pwm_info drv8701e_pwm_2_info;
+    
+    //低通滤波
+    motor_l.encb = motor_l.enc * loss_pass +motor_l.enc_last * (1 - loss_pass);  
+    motor_r.encb = motor_r.enc * loss_pass +motor_r.enc_last * (1 - loss_pass);  
+    motor_l.enc_last = motor_l.encb;  
+    motor_r.enc_last = motor_r.encb;  
+
+    motor_l.enc_total+= motor_l.enc;  
+    motor_r.enc_total+= motor_r.enc;
+
+    encoder_quad_1.clear_count();  
+    encoder_quad_2.clear_count();  
+}  
+/*-------------------------------------------读取距离---------------------------- ------------------------*/  
+int get_dist ()  
+{  
+    return ((motor_l.enc_total+motor_r.enc_total) / 2);  
+}  
+  
+/* ====================== 速度环（增量式，并环，5ms） ====================== */  
+ void speed_parallel_5ms()  
+{  
+    get_enconder();  
+    /* 计算线速度 m/s */  
+    float wl  = ((float)motor_l.enc / ENCODER_LINE_NUM) * 2.0f * 3.1415926f / DT_SPEED;  
+    float wr  = ((float)motor_r.enc / ENCODER_LINE_NUM) * 2.0f * 3.1415926f / DT_SPEED;  
+    g_speed_l = wl * WHEEL_RADIUS;  
+    g_speed_r = wr * WHEEL_RADIUS;  
+    // g_speed_l = motor_l.enc;  
+    // g_speed_r = motor_r.enc;  
+    g_speed   = 0.5f * (g_speed_l + g_speed_r);  
+    duty_l_out += PID_Inc(&pid_speed_l, g_target_speed - g_speed_l);  
+    duty_r_out += PID_Inc(&pid_speed_r, g_target_speed - g_speed_r);  
+    duty_l_out = limit_float(duty_l_out, -MAX_PWM, MAX_PWM);  
+    duty_r_out = limit_float(duty_r_out, -MAX_PWM, MAX_PWM);  
+    // int duty_l = (int)limit_float(duty_l_out - g_u_yaw, -MAX_DUTY, MAX_DUTY);  
+    // int duty_r = (int)limit_float(duty_r_out + g_u_yaw, -MAX_DUTY, MAX_DUTY);  
+    motor_set_lr(duty_l_out, duty_r_out);  
+    // g_speed_loop_cnt++;//统计pid计算时间  
+  
+}  
+ /* ====================== 速度环（增量式，串环，5ms） ====================== */  
+ void speed_cascaded_5ms()  
+ {  
+    get_enconder();  
+    /* 计算线速度 m/s */  
+    float wl  = ((float)motor_l.enc / ENCODER_LINE_NUM) * 2.0f * 3.1415926f / DT_SPEED;  
+    float wr  = ((float)motor_r.enc / ENCODER_LINE_NUM) * 2.0f * 3.1415926f / DT_SPEED;  
+    g_speed_l = wl * WHEEL_RADIUS;  
+    g_speed_r = wr * WHEEL_RADIUS;  
+    // g_speed_l = motor_l.enc;  
+    // g_speed_r = motor_r.enc;  
+    g_speed   = 0.5f * (g_speed_l + g_speed_r);  
+    duty_l_out += PID_Inc(&pid_speed_l, g_target_speed +g_u_yaw - g_speed_l);  
+    duty_r_out += PID_Inc(&pid_speed_r, g_target_speed -g_u_yaw - g_speed_r);  
+    int duty_l = duty_l_out = (int)limit_float(duty_l_out , -MAX_PWM, MAX_PWM);  
+    int duty_r = duty_r_out = (int)limit_float(duty_r_out , -MAX_PWM, MAX_PWM);  
+    motor_set_lr(duty_l, duty_r);  
+    // g_speed_loop_cnt++;//统计pid计算时间    
+ }  
+/* ====================== 角度环（位置式，主循环调用） ====================== */  
+void update_direction()  
+{  
+    /* 位置式PID直接输出g_u_yaw */  
+    // img_err_get();
+    g_u_yaw = PID_Pos(&pid_dir, img_err);  
+    g_u_yaw = limit_float(g_u_yaw, -12.0f, 12.0f);  
+}  
+/*====================== 角度环（位置式，双pd）============================*/  
+void yaw_10ms()    
+{     
+    imu_read();  
+    if (!g_imu_ready) return;                           // 校准未完成不输出  
+    g_u_yaw = PD_Loc_Ctrl_2PD(&pd_yaw, img_err, g_yaw_speed);  // ← 传陀螺仪数据  
+    g_u_yaw = limit_float(g_u_yaw, -5.0f, 5.0f);    
+}    
+
+/*==========================角速度环（增量式，单pd）=====================================*/
+void yaw_spd_10ms()
+{
+    imu_read();
+    if (!g_imu_ready) return; 
+}
+  
+/* ====================== 速度环重置（目标速度变更时调用） ====================== */  
+void speed_reset()  
+{  
+    PID_Inc_Reset(&pid_speed_l);  
+    PID_Inc_Reset(&pid_speed_r);  
+    duty_l_out = 0.0f;  
+    duty_r_out = 0.0f;  
+}  
+  
+/* ====================== pit_callback_speed（注册给pit_timer） ====================== */  
+void pit_callback_speed()  
+{  
+    speed_parallel_5ms();  
+}  
+  
+/* ====================== run_speed_loop（主循环手动调用，调试用） ====================== */  
+void run_speed_loop()  
+{  
+    speed_parallel_5ms();  
+}  
+/*----------------------角度环-------------------------*/  
+ void yaw_callback_speed()  
+ {  
+
+    yaw_10ms();  
+ }  
+// ============================ 渐进式死区补偿 ============================  
+/**  
+ * @brief 渐进式死区补偿，消除低速前馈跳变导致的高频抖动  
+ * PID输出绝对值从0到ramp_width范围内，补偿量从0平滑增加到deadzone（smoothstep）  
+ * 超过ramp_width后补偿满值，全程无阶跃跳变  
+ */  
+static int32_t apply_smooth_deadzone(int32_t duty, int32_t deadzone, float ramp_width)  
+{  
+    float abs_duty = fabsf((float)duty);  
+    if (abs_duty < 1.0f) return 0;  // PID输出≈0，电机不动  
+  
+    // 防御性保护，避免除0和异常参数  
+    if (ramp_width < 1.0f) {  
+        ramp_width = 1.0f;  
+    }  
+  
+    // 平滑比例：smoothstep曲线（0处斜率为0），比线性更不易触发低速振荡  
+    float t = abs_duty / ramp_width;  
+    if (t > 1.0f) t = 1.0f;  
+    float scale = t * t * (3.0f - 2.0f * t);  
+  
+    // 四舍五入，降低整型截断带来的量化抖动  
+    int32_t compensation = (int32_t)((float)deadzone * scale + 0.5f);  
+  
+    if (duty > 0) return duty + compensation;  
+    else          return duty - compensation;  
+}  
 
 
-// zf_driver_gpio  drv8701e_dir_1(DIR_1_PATH, O_RDWR);
-// zf_driver_gpio  drv8701e_dir_2(DIR_2_PATH, O_RDWR);
-// zf_driver_pwm   drv8701e_pwm_1(PWM_1_PATH);
-// zf_driver_pwm   drv8701e_pwm_2(PWM_2_PATH);
-// // PID初始化函数
-// void PID_Init(PID_Datatypedef *sptr)
-// {
-//     sptr->P = 0;         // 初始化比例系数
-//     sptr->I = 0;         // 初始化积分系数
-//     sptr->D = 0;         // 初始化微分系数
-//     sptr->LastError = 0; // 初始化上一次误差
-//     sptr->PrevError = 0; // 初始化上上次误差
-// }
-
-// // 速度环
-// PID_Datatypedef sptr_line;
-// float debug_p = 10.0, debug_i = 5.0, debug_d = 0; // PID调试参数
-// float speed_r;                                      // 右电机速度
-// float speed_l;                                      // 左电机速度
-// float line_speed = 0.0;                             // 质心线速度
-// float target_speed = 120.0;
-// float debug_t_speed = 100.0;
-// #define PWM_PID_P 30.0
-// #define PWM_PID_I 2.0
-// #define PWM_PID_D 20.0
-// #define ENCODER_QUAD_1_PATH           ZF_ENCODER_QUAD_1
-// #define ENCODER_QUAD_2_PATH           ZF_ENCODER_QUAD_2
-
-// // 创建编码器对象，传入文件路径
-// zf_driver_encoder encoder_quad_1(ENCODER_QUAD_1_PATH);
-// zf_driver_encoder encoder_quad_2(ENCODER_QUAD_2_PATH);
-// // 编码器读取函数
-// void encoder_Read()
-// {
-//     encoder_count_l = encoder_quad_1.get_count(); // 读取左电机编码器值
-//     encoder_quad_1.clear_count();              // 清除左电机编码器计数
-//     encoder_count_r = -encoder_quad_2.get_count(); // 读取右电机编码器值（反向）
-//     encoder_quad_2.clear_count();                  // 清除右电机编码器计数
-//     // 计算轮速
-//     speed_l = 100.0 * (float)encoder_count_l / ENCODER_LINE_NUM * 2 * 3.14 / (PIT_60_0_PERIOD * 0.001) * WHEEL_RADIUS; // 左轮速度
-//     speed_r = 100.0 * (float)encoder_count_r / ENCODER_LINE_NUM * 2 * 3.14 / (PIT_60_0_PERIOD * 0.001) * WHEEL_RADIUS; // 右轮速度
-//     line_speed = (speed_l + speed_r) / 2;                                                                              // 质心线速度
-//     // 计算行驶距离
-//     encoder_distance += (speed_l + speed_r) / 2 * (PIT_60_0_PERIOD * 0.001); // 平均速度
-// }
-// //陀螺仪读取函数
-// void imu_Read()
-// {
-//     imu_acc_x = imu_dev.get_acc_x();
-//     imu_acc_y = imu_dev.get_acc_y();
-//     imu_acc_z = imu_dev.get_acc_z();
-
-//     imu_gyro_x = imu_dev.get_gyro_x();
-//     imu_gyro_y = imu_dev.get_gyro_y();
-//     imu_gyro_z = imu_dev.get_gyro_z();
-//     // float data = imu660ra_gyro_transition(imu660ra_gyro_z);
-//     float data = imu_gyro_x;
-//     if (zero_point_count < IMU_ZERO_COUNT)
-//     {
-//         zero_point += data;
-//         zero_point_count++;
-//     }
-//     else if (zero_point_count == IMU_ZERO_COUNT)
-//     {
-//         zero_point /= IMU_ZERO_COUNT;
-//         zero_point_count++;
-//     }
-//     else
-//     {
-//         data -= zero_point;
-//     }
-//     yaw_speed = data; // 角速度
-//     angle_yaw += data * 0.001 * PIT_60_1_PERIOD;
-// //    if (angle_yaw > 180)
-// //        angle_yaw -= 360;
-// //    else if (angle_yaw < -180)
-// //        angle_yaw += 360;
-//     // printf("angle_yaw:%f\r\n",angle_yaw);
-// }
-// //增量式PID
-// float PID_Inc(PID_Datatypedef *sptr, float Now, float Expect)
-// {
-//     float Increase; // PID 输出增量
-//     float iError;   // 当前误差
-//     iError = Expect - Now;
-//     Increase = sptr->P * (iError - sptr->LastError) + sptr->I * iError + sptr->D * (iError - 2.0f * sptr->LastError + sptr->PrevError);
-
-//     // 更新误差历史
-//     sptr->PrevError = sptr->LastError;
-//     sptr->LastError = iError;
-
-//     return Increase;
-// }
-// //速度环pid输出
-// void PID_Inc_Speed_Output(float target_line_speed, float current_line_speed)
-// {
-//     // 速度环
-//     int16 pwm_line_add = PID_Inc(&sptr_line, current_line_speed, target_line_speed);
-//     // 更新PWM值
-//     pwm_l += pwm_line_add;
-//     pwm_r += pwm_line_add;
-
-// }
-// void pwm_out_put()
-// {
-//         if(pwm_l >= 0)                                                           // 正转
-//         {
-//             drv8701e_dir_2.set_level(1);                                      // DIR输出高电平
-//             drv8701e_pwm_2.set_duty(pwm_l * (MOTOR2_PWM_DUTY_MAX / 100));       // 计算占空比
-
-
-//         }
-//         else
-//         {
-//             drv8701e_dir_2.set_level(0);                                      // DIR输出低电平
-//             drv8701e_pwm_2.set_duty(-pwm_l * (MOTOR2_PWM_DUTY_MAX / 100));      // 计算占空比
-
-//         }
-//         if(pwm_r >= 0)
-//         {
-//             drv8701e_dir_1.set_level(1);                                      // DIR输出高电平
-//             drv8701e_pwm_1.set_duty(pwm_r * (MOTOR1_PWM_DUTY_MAX / 100));       // 计算占空比
-
-
-//         }
-//         else
-//         {
-//             drv8701e_dir_1.set_level(0);                                      // DIR输出低电平
-//             drv8701e_pwm_1.set_duty(-pwm_r * (MOTOR1_PWM_DUTY_MAX / 100));      // 计算占空比
-
-//         }
-// } 
-// // 电机控制函数
-// void motor_control()
-// {
-//     // 在此处进行初始化，在all_init.c中尽量只进行硬件初始化
-//     static bool initialized = false; // 只在第一次进入时为 false
-
-//     sptr_line.P = PWM_PID_P;
-//     sptr_line.I = PWM_PID_I;
-//     sptr_line.D = PWM_PID_D;
-//     int16 pwm_r_add = 0; // 右电机PWM增量
-//     int16 pwm_l_add = 0; // 左电机PWM增量
-
-//     // angular_speed_control(error_image, yaw_speed); // 角速度环
-//     PID_Inc_Speed_Output(target_speed, line_speed);      // 线速度环
-
-//     // running_state_update(); // 更新运行状态,限制从零开始加速时的饱和值，防止过冲
-
-//     // 限制PWM值的范围
-//     pwm_l=limit_int(pwm_l,-MAX_DUTY,MAX_DUTY);
-//     pwm_r=limit_int(pwm_r,-MAX_DUTY,MAX_DUTY);
-
-//     pwm_out_put();
-// }

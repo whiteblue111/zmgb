@@ -22,13 +22,27 @@ void image_process(uint16_t* input_rgb565, uint8_t* output_binary, int width, in
     memcpy(output_binary, binary_frame.data, width * height);  
 }  
 
-// // 逆透视变换矩阵(原图->俯视)
+// 逆透视变换矩阵(原图->俯视)
 
-// float H[3][3] =  
-// {  
-//  {     2.1517,     1.9278,  -104.4764},
-// {    -0.3644,     4.9223,  -134.9300},
-// {    -0.0033,     0.0245,     1.0000}
-// };  
+// ====================== 逆透视矩阵（原图 -> 俯视） ======================  
+const float H_IPM[3][3] = {
+    { 10.6452f,  12.7419f, -735.0000f },
+    { -0.0000f,  25.3226f, -855.0000f },
+    {  0.0000f,   0.1613f,    1.0000f }
+};  
+//更改后重新标定赛道宽度
+
+  
+// 原图点 -> 俯视图点  
+ bool warp_point_ipm(float x, float y, float &u, float &v)  
+{  
+    float w = H_IPM[2][0] * x + H_IPM[2][1] * y + H_IPM[2][2];  
+    if (fabsf(w) < 1e-6f) return false;  
+  
+    u = (H_IPM[0][0] * x + H_IPM[0][1] * y + H_IPM[0][2]) / w;  
+    v = (H_IPM[1][0] * x + H_IPM[1][1] * y + H_IPM[1][2]) / w;  
+    return true;  
+}  
+
 
 

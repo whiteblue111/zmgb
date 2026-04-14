@@ -72,11 +72,16 @@
 //===================================================应用组件层===================================================
 
 //===================================================用户自定义文件===================================================
- #include "math.hpp"
- #include "motor.hpp"
+ #include "circle.hpp" 
+ #include "cross.hpp"
+ #include "display.hpp"
  #include "image.hpp"
  #include "imgproc.hpp"
- #include "display.hpp"
+ #include "imu0.hpp"
+ #include "math.hpp"
+ #include "motor.hpp"
+ #include "pid.hpp"
+ 
 //===================================================用户自定义文件===================================================
 
 
