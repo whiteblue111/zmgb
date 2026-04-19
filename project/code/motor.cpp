@@ -47,7 +47,7 @@ volatile int16 total_enc_r = 0;
 PID_Inc_Datatypedef pid_speed_l = PID_INC_INIT(90.00f, 30.00f, 0.0f);  
 PID_Inc_Datatypedef pid_speed_r = PID_INC_INIT(90.00f, 30.00f, 0.0f); 
 PID_Pos_Datatypedef pid_dir     = PID_POS_INIT(0.0f, 0.0f,  0.0f, 0.0f);  
-PD_Double  pd_yaw               = PD_DOUBLE_INIT(0.013f, 0.0008f, 0.0f, 0.008f); //双pd角度环
+PD_Double  pd_yaw               = PD_DOUBLE_INIT(0.017f, 0.0012f, 0.010f, 0.008f); //双pd角度环
 PID_Pos_Datatypedef pid_yaw_spd = PID_POS_INIT(0.0, 0.0, 0.0, 0.0);
 /* ====================== 增量式速度环内部累计占空比 ====================== */  
 static float duty_l_out = 0.0f;  

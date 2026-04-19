@@ -17,6 +17,7 @@ extern float begin_y;               // 起始点距离图像底部的上下偏�
 #define PI 3.14
 void check_cross();
 // void run_cross(Mat img,float pts_l[][2],int num_l,float pts_r[][2],int num_r);
+void supplement_line_down(float pts_in[][2], int* num, int corner_index, float dist);
 void run_cross();
 void cross_farline(Mat img);
 #endif

@@ -24,6 +24,7 @@ zf_device_ips200     ips200;
 volatile uint32_t g_speed_loop_cnt = 0;   // 1秒内速度环执行次数    
 volatile uint32_t g_last_speed_hz  = 0;   // 上一秒统计值    
   
+float yaw_diff = 0.0f;
 zf_driver_pit        pit_timer;    
 zf_driver_pit        fps_timer;  
 zf_driver_pit        img_timer;  
@@ -34,6 +35,7 @@ float aim_dist         = 0.4f;
 float resample_dist    = 1.0f;    
 float angle_dist       = 2.0f; 
 int aim_id = 30;
+
    
 float pixel_per_meter= 100.0f;    
 int   blur_kernel    = 5;    
@@ -126,10 +128,17 @@ extern vuint8 seekfree_assistant_parameter_update_flag[SEEKFREE_ASSISTANT_SET_PA
 //查看帧率  
 void fps_callback()  
 {  
-    // printf("FPS: %d\n", my_fps);    
-    // my_fps = 0;  
-    printf("angle: %f\n",g_angle_yaw);
-}  
+    // 打印角度和圆环状态
+    if (circle_type >= 0 && circle_type < CIRCLE_NUM) {
+        printf("dangle: %.2f | circle: %s\n", 
+               yaw_diff, 
+               circle_type_name[circle_type]);
+    } else {
+        printf("dangle: %.2f | circle: UNKNOWN(%d)\n", 
+               g_angle_yaw, 
+               circle_type);
+    }
+} 
 void period_print_callback()    
 {    
     g_last_speed_hz = g_speed_loop_cnt;    
@@ -271,8 +280,8 @@ int main()
 //     }    
     
     /* ---------- 屏幕初始化 ---------- */    
-    // ips200.init(FB_PATH);    
-    // display_init(&ips200);    
+    ips200.init(FB_PATH);    
+    display_init(&ips200);    
     
     /* ---------- 摄像头初始化 ---------- */    
     if (uvc_dev.init(UVC_PATH) < 0)    
@@ -351,8 +360,8 @@ int main()
         // add_black_border(bin_mat, 2);   
         // add_black_border_half(bin_mat, 2);
         /* -------- 6. 寻找左右边线起点 -------- */    
-        int sx_l = 0, sy_l = UVC_HEIGHT - 5;    
-        int sx_r = UVC_WIDTH - 1, sy_r = UVC_HEIGHT - 5;    
+        int sx_l = 2, sy_l = UVC_HEIGHT - 5;    
+        int sx_r = UVC_WIDTH - 3, sy_r = UVC_HEIGHT - 5;    
         find_left_base (bin_mat, &sx_l, &sy_l);    
         find_right_base(bin_mat, &sx_r, &sy_r);    
     
@@ -424,17 +433,45 @@ int main()
         nms_angle(angles_r,rpts_r_resample_num,angles_nms_r,5);
         max_angle(angles_r,rpts_r_resample_num,&angle_r_max,&angle_r_max_id);
         find_corners();
-        // check_circle();
-        // run_circle();
+        check_circle();
+        run_circle();
         // check_cross();
         // run_cross();
-        //等距采样后左线推中线
-        if(track_type == TRACK_LEFT){
-            track_leftline(rpts_l_resample,rpts_l_resample_num,rpts_c,rpts_c_num,angle_dist/resample_dist,HALF_ROAD_WIDTH);
+        float follow_offset = HALF_ROAD_WIDTH;  
+  
+        //环内/环运行/出环阶段，向内靠 5 像素  
+        if (circle_type == CIRCLE_LEFT_IN ||  circle_type == CIRCLE_LEFT_OUT )  
+        {  
+            follow_offset = HALF_ROAD_WIDTH - 12.0f;  
+            if (follow_offset < 0.0f) follow_offset = 0.0f;  
+        } 
+        if (circle_type == CIRCLE_LEFT_RUNNING ) 
+        {
+            follow_offset = HALF_ROAD_WIDTH + 12.0f;
         }
-        else if(track_type == TRACK_RIGHT){
-            track_rightline(rpts_r_resample,rpts_r_resample_num,rpts_c,rpts_c_num,angle_dist/resample_dist,HALF_ROAD_WIDTH);
+        if (circle_type == CIRCLE_LEFT_BEGIN)
+        {
+            follow_offset = HALF_ROAD_WIDTH + 15.0f;
         }
+
+        // if (track_type == TRACK_LEFT && rpts_l_resample_num <= 0) {  
+        //     make_left_border_fallback(rpts_l_resample, &rpts_l_resample_num, 80); // 80可调  
+        // }  
+
+        
+        if (track_type == TRACK_LEFT) {  
+            track_leftline(rpts_l_resample, rpts_l_resample_num,  
+                        rpts_c, rpts_c_num,  
+                        angle_dist / resample_dist,  
+                        follow_offset);  
+        }  
+        else if (track_type == TRACK_RIGHT) {  
+            track_rightline(rpts_r_resample, rpts_r_resample_num,  
+                            rpts_c, rpts_c_num,  
+                            angle_dist / resample_dist,  
+                            follow_offset);  
+}  
+
         //中线归一化
         normalize_midline_with_anchor(rpts_c,rpts_c_num,rpts_c_same,&rpts_c_same_num);
         //中线等距采样
@@ -453,60 +490,59 @@ int main()
             UVC_WIDTH, UVC_HEIGHT, 0);  
         char info[64];  
         snprintf(info, sizeof(info), "img_err: %.2f", img_err);  
-        ips200.show_string(4, UVC_HEIGHT + 10, info);
-        ips200.show_uint(30,UVC_HEIGHT + 30,  rpts_l_resample_num ,3);
-        ips200.show_uint(80,UVC_HEIGHT + 30,  rpts_r_resample_num ,3);
-        ips200.show_string(4,  UVC_HEIGHT + 45, (char*)"L_l:");  
-        ips200.show_string(50, UVC_HEIGHT + 45, (char*)(Lpt_l_found ? "YES" : "NO "));  
+        ips200.show_string(4, UVC_HEIGHT + 10, info);  
         
-        ips200.show_string(90,  UVC_HEIGHT + 45, (char*)"L_r:");  
-        ips200.show_string(136, UVC_HEIGHT + 45, (char*)(Lpt_r_found ? "YES" : "NO "));  
-        ips200.show_string(4,  UVC_HEIGHT + 60, (char*)"idL:");  
-        ips200.show_uint  (40, UVC_HEIGHT + 60, (uint32)Lpt_l_id, 3);  
+        ips200.show_uint(30, UVC_HEIGHT + 30, rpts_l_resample_num, 3);  
+        ips200.show_uint(80, UVC_HEIGHT + 30, rpts_r_resample_num, 3);  
         
-        ips200.show_string(80, UVC_HEIGHT + 60, (char*)"idR:");  
-        ips200.show_uint  (116,UVC_HEIGHT + 60, (uint32)Lpt_r_id, 3);  
-        ips200.show_string(4,   UVC_HEIGHT + 75, (char*)"S_l:");  
-        ips200.show_string(50,  UVC_HEIGHT + 75, (char*)(is_straight_l ? "YES" : "NO "));  
+        ips200.show_string(4,   UVC_HEIGHT + 45, (char*)"S_l:");  
+        ips200.show_string(50,  UVC_HEIGHT + 45, (char*)(is_straight_l ? "YES" : "NO "));  
+        ips200.show_string(90,  UVC_HEIGHT + 45, (char*)"S_r:");  
+        ips200.show_string(136, UVC_HEIGHT + 45, (char*)(is_straight_r ? "YES" : "NO "));  
         
-        ips200.show_string(90,  UVC_HEIGHT + 75, (char*)"S_r:");  
-        ips200.show_string(136, UVC_HEIGHT + 75, (char*)(is_straight_r ? "YES" : "NO ")); 
-        ips200.show_string(4,  UVC_HEIGHT + 90, (char*)"Circle:");  
-        // 先覆盖旧内容（长度要足够）  
-        ips200.show_string(60, UVC_HEIGHT + 90, (char*)"                ");   
-        ips200.show_string(60, UVC_HEIGHT + 90,  
+        ips200.show_string(4, UVC_HEIGHT + 60, (char*)"Circle:");  
+        ips200.show_string(60, UVC_HEIGHT + 60, (char*)"                ");  
+        ips200.show_string(60, UVC_HEIGHT + 60,  
             (char*)((circle_type >= 0 && circle_type < CIRCLE_NUM) ? circle_type_name[circle_type] : "UNKNOWN"));  
-
-        ips200.show_string(4, UVC_HEIGHT + 90, (char*)"Circle:");  
-        ips200.show_string(60, UVC_HEIGHT + 90,  (char*)((circle_type >= 0 && circle_type < CIRCLE_NUM) ? circle_type_name[circle_type] : "UNKNOWN"));  
-
         
-        ips200.show_string(4, UVC_HEIGHT + 105, (char*)"l0y:");  
-        ips200.show_float(40, UVC_HEIGHT + 105, rpts_l_resample[0][1], 2, 6);  // 小数2位  
-        int ip0y = (ipts_l_num > 0) ? (int)(ipts_l[0][1] + 0.5f) : 0;  
-        ips200.show_string(80, UVC_HEIGHT + 120, (char*)"ip0y:");  
-        ips200.show_uint(125, UVC_HEIGHT + 120, (uint32)ip0y, 3);  
-        ips200.show_string(4,   UVC_HEIGHT + 135, (char*)"aL:");  
-        ips200.show_float (30,  UVC_HEIGHT + 135, angle_l_max, 3, 7);   // 3位小数，宽度7  
+        ips200.show_string(4,   UVC_HEIGHT + 75, (char*)"aL:");  
+        ips200.show_float (30,  UVC_HEIGHT + 75, angle_l_max, 3, 7);  
+        ips200.show_string(90,  UVC_HEIGHT + 75, (char*)"idL:");  
+        ips200.show_uint  (128, UVC_HEIGHT + 75, (uint32)angle_l_max_id, 3);  
         
-        ips200.show_string(90,  UVC_HEIGHT + 135, (char*)"idL:");  
-        ips200.show_uint  (128, UVC_HEIGHT + 135, (uint32)angle_l_max_id, 3);  
-
-        ips200.show_string(4, UVC_HEIGHT + 165, (char*)"r0x:");  
-        if (rpts_r_resample_num > 0)  
-            ips200.show_float(40, UVC_HEIGHT + 165, rpts_r_resample[0][0], 2, 6);  
+        ips200.show_string(4, UVC_HEIGHT + 90, (char*)"r0x:");  
+        if (rpts_r_resample_num > 0) ips200.show_float(40, UVC_HEIGHT + 90, rpts_r_resample[0][0], 2, 6);  
+        else                         ips200.show_string(40, UVC_HEIGHT + 90, (char*)"--");  
+        
+        ips200.show_string(90, UVC_HEIGHT + 90, (char*)"r0y:");  
+        if (rpts_r_resample_num > 0) ips200.show_float(126, UVC_HEIGHT + 90, rpts_r_resample[0][1], 2, 6);  
+        else                         ips200.show_string(126, UVC_HEIGHT + 90, (char*)"--");  
+        
+        // 新增 turn_id / turn_y  
+        extern int g_left_begin_turn_id;   // 若你在circle.cpp里是static，需要去掉static或提供getter  
+        ips200.show_string(4, UVC_HEIGHT + 105, (char*)"tid:");  
+        if (g_left_begin_turn_id >= 0) ips200.show_uint(40, UVC_HEIGHT + 105, (uint32)g_left_begin_turn_id, 3);  
+        else                            ips200.show_string(40, UVC_HEIGHT + 105, (char*)"--");  
+        
+        ips200.show_string(90, UVC_HEIGHT + 105, (char*)"ty:");  
+        if (g_left_begin_turn_id >= 0 && g_left_begin_turn_id < ipts_l_num)  
+            ips200.show_float(116, UVC_HEIGHT + 105, ipts_l[g_left_begin_turn_id][1], 2, 6);  
         else  
-            ips200.show_string(40, UVC_HEIGHT + 165, (char*)"--");  
+            ips200.show_string(116, UVC_HEIGHT + 105, (char*)"--");  
         
-        ips200.show_string(90, UVC_HEIGHT + 165, (char*)"r0y:");  
-        if (rpts_r_resample_num > 0)  
-            ips200.show_float(126, UVC_HEIGHT + 165, rpts_r_resample[0][1], 2, 6);  
-        else  
-            ips200.show_string(126, UVC_HEIGHT + 165, (char*)"--");  
-        ips200.show_string(4,  UVC_HEIGHT + 180, (char*)"Cross:");  
-        ips200.show_string(60, UVC_HEIGHT + 180, (char*)"                ");  // 清旧字串  
-        ips200.show_string(60, UVC_HEIGHT + 180,  
-            (char*)((cross_type >= 0 && cross_type < CROSS_NUM) ? cross_type_name[cross_type] : "UNKNOWN"));  
+        ips200.show_string(4, UVC_HEIGHT + 120, (char*)"Cross:");  
+        ips200.show_string(60, UVC_HEIGHT + 120, (char*)"                ");  
+        ips200.show_string(60, UVC_HEIGHT + 120,  
+            (char*)((cross_type >= 0 && cross_type < CROSS_NUM) ? cross_type_name[cross_type] : "UNKNOWN"));
+        ips200.show_string(4, UVC_HEIGHT + 150, (char*)"yaw:");  
+        ips200.show_float (40, UVC_HEIGHT + 150, g_angle_yaw, 2, 7);  
+        ips200.show_string(90, UVC_HEIGHT + 165, (char*)"beg:");  
+        ips200.show_float (126,UVC_HEIGHT + 165, angle_begin, 2, 7);  
+        yaw_diff = g_angle_yaw - angle_begin;  
+        ips200.show_string(4, UVC_HEIGHT + 135, (char*)"dyaw:");  
+        ips200.show_float (50, UVC_HEIGHT + 135, yaw_diff, 2, 7);  
+
+  
 
         
 

@@ -105,35 +105,125 @@ void supplement_line(float pts_in[][2], int* num, int corner_index, float dist) 
         }
     }
 }
-//双L角点,切十字模式
-void check_cross() {
-    bool Xfound = angle_l_max >65. /180.*PI && angle_r_max > 65. / 180. * PI ;
-    if (cross_type == CROSS_NONE && Xfound) cross_type = CROSS_BEGIN;
-}
+// 从角点向下补线（图像坐标系：y向下增大）  
+void supplement_line_down(float pts_in[][2], int* num, int corner_index, float dist) {  
+    // 1. 安全检查  
+    if (!pts_in || !num) return;  
+    if (corner_index <= 1 || corner_index >= *num) return;  
+  
+    // 2. 统计斜率（平均角度）  
+    float avg_angle = 0.0f;  
+    for (int i = 0; i < corner_index - 1; i++) {  
+        float dx = pts_in[i + 1][0] - pts_in[i][0];  
+        float dy = pts_in[i + 1][1] - pts_in[i][1];  
+        avg_angle += -atan2f(dy, dx);  
+    }  
+    avg_angle /= (corner_index - 1);  
+  
+    float start_x = pts_in[corner_index][0];  
+    float start_y = pts_in[corner_index][1];  
+    float abs_angle = fabsf(avg_angle);  
+  
+    // 3. 补线逻辑  
+    // 垂直趋势判定：45° ~ 135°  
+    if (abs_angle > PI / 4 && abs_angle < 3 * PI / 4) {  
+        int current_idx = corner_index;  
+  
+        // 从角点向下补（与原函数 y -= ... 相反）  
+        while (current_idx < (POINTS_MAX_LEN - 1)) {  
+            start_x += dist * cosf(avg_angle);  
+            start_y += dist * sinf(avg_angle);   // 向下关键：+  
+  
+            current_idx++;  
+            pts_in[current_idx][0] = start_x;  
+            pts_in[current_idx][1] = start_y;  
+        }  
+        *num = POINTS_MAX_LEN;  
+    }   
+    else {  
+        // 水平趋势：从角点坐标向上/下拉一条，按你需求这里也改成向下  
+        for (int i = corner_index + 1; i < POINTS_MAX_LEN; i++) {  
+            pts_in[i][0] = pts_in[corner_index][0];  
+            pts_in[i][1] = pts_in[corner_index][1] + dist * (i - corner_index);  
+        }  
+        *num = POINTS_MAX_LEN;  
+    }  
+}  
 
-void run_cross(){
-    if (cross_type == CROSS_BEGIN)
-    {
-        if (angle_l_max >65. /180.*PI)
-        {   //左补线
-            supplement_line(rpts_l_resample,&rpts_l_resample_num,angle_l_max_id,resample_dist);
-        }
-        if (angle_r_max >65. /180.*PI)
-        {   //右补线
-            supplement_line(rpts_r_resample,&rpts_r_resample_num,angle_r_max_id,resample_dist);
-        }
-        //选择最长边线跟踪中线
-        if(rpts_l_resample_num > rpts_r_resample_num){
-            track_type = TRACK_LEFT; //左边线最长
-        }else if(rpts_l_resample_num < rpts_r_resample_num){
-            track_type = TRACK_RIGHT; //右边线最长
-        }
-        return ;  
-    }
-    
- 
-    
-}
+//双L角点,切十字模式
+void check_cross() {  
+    bool l_ok = (angle_l_max_id >= 0 && angle_l_max_id < rpts_l_resample_num);  
+    bool r_ok = (angle_r_max_id >= 0 && angle_r_max_id < rpts_r_resample_num);  
+    if (!l_ok || !r_ok) return;  
+  
+    bool Xfound = (angle_l_max > 65.0f/180.0f*PI) &&  
+                  (angle_r_max > 65.0f/180.0f*PI) &&  
+                  (rpts_l_resample[angle_l_max_id][1] > 60.0f) &&  
+                  (rpts_r_resample[angle_r_max_id][1] > 60.0f);  
+  
+    float dx = rpts_l_resample[angle_l_max_id][0] - rpts_r_resample[angle_r_max_id][0];  
+    float dy = rpts_l_resample[angle_l_max_id][1] - rpts_r_resample[angle_r_max_id][1];  
+    float corner_dist = sqrtf(dx * dx + dy * dy);  
+  
+    bool dist_right = (corner_dist > ROAD_WIDTH - 10.0f) && (corner_dist < ROAD_WIDTH + 10.0f);  
+  
+    if (cross_type == CROSS_NONE && Xfound && dist_right) {  
+        cross_type = CROSS_BEGIN;  
+    }  
+}  
+  
+void run_cross() {  
+    bool l_ok = (angle_l_max_id >= 0 && angle_l_max_id < rpts_l_resample_num);  
+    bool r_ok = (angle_r_max_id >= 0 && angle_r_max_id < rpts_r_resample_num);  
+  
+    if (cross_type == CROSS_BEGIN) {  
+        if (l_ok && angle_l_max > 65.0f/180.0f*PI && rpts_l_resample[angle_l_max_id][1] > 60.0f) {  
+            supplement_line(rpts_l_resample, &rpts_l_resample_num, angle_l_max_id, resample_dist);  
+        }  
+        if (r_ok && angle_r_max > 65.0f/180.0f*PI && rpts_r_resample[angle_r_max_id][1] > 60.0f) {  
+            supplement_line(rpts_r_resample, &rpts_r_resample_num, angle_r_max_id, resample_dist);  
+        }  
+  
+        // 重新检查（补线后 num 可能改变）  
+        l_ok = (angle_l_max_id >= 0 && angle_l_max_id < rpts_l_resample_num);  
+        r_ok = (angle_r_max_id >= 0 && angle_r_max_id < rpts_r_resample_num);  
+  
+        if (l_ok && r_ok &&  
+            rpts_l_resample[angle_l_max_id][1] < 50.0f &&  
+            rpts_r_resample[angle_r_max_id][1] < 50.0f) {  
+            cross_type = CROSS_IN;  
+        }  
+    }  
+  
+    if (cross_type == CROSS_IN) {  
+        if (l_ok) {  
+            int new_l_num = 0;  
+            for (int i = 0; angle_l_max_id + i < rpts_l_resample_num && i < POINTS_MAX_LEN; i++) {  
+                rpts_l_resample[i][0] = rpts_l_resample[angle_l_max_id + i][0];  
+                rpts_l_resample[i][1] = rpts_l_resample[angle_l_max_id + i][1];  
+                new_l_num++;  
+            }  
+            rpts_l_resample_num = new_l_num;  
+        }  
+  
+        if (r_ok) {  
+            int new_r_num = 0;  
+            for (int i = 0; angle_r_max_id + i < rpts_r_resample_num && i < POINTS_MAX_LEN; i++) {  
+                rpts_r_resample[i][0] = rpts_r_resample[angle_r_max_id + i][0];  
+                rpts_r_resample[i][1] = rpts_r_resample[angle_r_max_id + i][1];  
+                new_r_num++;  
+            }  
+            rpts_r_resample_num = new_r_num;  
+        }  
+  
+        if (angle_l_max < 55.0f/180.0f*PI && angle_r_max < 55.0f/180.0f*PI) {  
+            cross_type = CROSS_NONE;  
+        }  
+    }  
+}  
+
+  
+
 
 // void run_cross(Mat img,float pts_l[][2],int num_l,float pts_r[][2],int num_r) 
 // {

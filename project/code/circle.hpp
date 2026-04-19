@@ -12,9 +12,18 @@ enum circle_type_e {
     CIRCLE_LEFT_END, CIRCLE_RIGHT_END,          // 圆环结束，即再次走到单侧直道的位置。
     CIRCLE_NUM,                                 //
 };
-
+extern int   g_left_begin_turn_id;
 extern const char *circle_type_name[CIRCLE_NUM];
 extern enum circle_type_e circle_type;
+extern float angle_begin;
+extern void make_left_border_fallback(float pts[][2], int* num, int max_len)  ;
+static bool find_monotonic_turn_x(  
+    float pts[][2], int num,  
+    int start_id, int end_id,  
+    int mode,            // -1 valley, +1 peak  
+    float dx_eps,        // 抑制抖动阈值，如 0.5~1.0  
+    int min_run,         // 前后至少连续点数，如 3  
+    int *out_id)  ;
 void check_circle();
 void run_circle();
 #endif
