@@ -499,6 +499,8 @@ void normalize_midline_with_anchor(float pts_in[][2], int in_num, float pts_out[
     {  
         pts_out[outn][0] = (float)CENTER_BEGIN_X;  
         pts_out[outn][1] = (float)CENTER_BEGIN_Y;  
+        if (cross_type == CROSS_IN)
+         pts_out[outn][1] = (float)(CENTER_BEGIN_Y - 20);  // 十字时锚点稍微往上，避免干扰
         outn++;  
   
         int start_i = 0;  

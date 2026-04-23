@@ -16,8 +16,8 @@ static float CIRCLE_IN_Y_TH = 70.0f;   // 你可调：60~90
 const char *circle_type_name[CIRCLE_NUM] = {
         "CIRCLE_NONE",
         "CIRCLE_LEFT_BEGIN", "CIRCLE_RIGHT_BEGIN",
-        "CIRCLE_LEFT_RUNNING", "CIRCLE_RIGHT_RUNNING",
         "CIRCLE_LEFT_IN", "CIRCLE_RIGHT_IN",
+        "CIRCLE_LEFT_RUNNING", "CIRCLE_RIGHT_RUNNING",
         "CIRCLE_LEFT_OUT", "CIRCLE_RIGHT_OUT",
         "CIRCLE_LEFT_END", "CIRCLE_RIGHT_END",
 };
@@ -297,7 +297,7 @@ void run_circle()
   
         // 防止刚进IN就立刻跳RUNNING：先驻留几帧  
         const int IN_MIN_HOLD_FRAMES = 8;  
-        if (in_hold_frames >= IN_MIN_HOLD_FRAMES &&  (g_angle_yaw - angle_begin < -85.0f))  
+        if (in_hold_frames >= IN_MIN_HOLD_FRAMES &&  (g_angle_yaw - angle_begin < -45.0f))  
         {  
             circle_type = CIRCLE_LEFT_RUNNING;  
             in_hold_frames = 0;  
@@ -327,7 +327,7 @@ void run_circle()
     {  
         track_type = TRACK_LEFT;  
   
-        if (g_angle_yaw - angle_begin < -360.0f)  
+        if (g_angle_yaw - angle_begin < -355.0f)  
         {  
             circle_type = CIRCLE_LEFT_END;  
         }  

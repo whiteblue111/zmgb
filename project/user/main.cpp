@@ -63,8 +63,8 @@ int   rpts_lc_num = 0;
 int   rpts_rc_num = 0;    
     
 // ===== 十字用 =====    
-float begin_x = 0.f;    
-float begin_y = 0.f;    
+float begin_x = 50.0f;  
+float begin_y = 60.0f;    
     
 // 你 cross.cpp 里是 extern float mapx[120][160], mapy[120][160];    
 float mapx[120][160] = {0};    
@@ -150,7 +150,18 @@ void period_print_callback()
     }    
     
     printf("[loop] speed_hz=%u, period=%.3f ms\n", g_last_speed_hz, period_ms);    
-}    
+}   
+/* ====================== 小车状态机枚举 ====================== */
+enum CarState {
+    STATE_INIT,         // 初始化/停车准备状态（等待按键发车）
+    STATE_TRACKING,     // 正常循迹状态（直道、普通弯道）
+    STATE_CIRCLE,       // 环岛处理状态
+    STATE_CROSS,        // 十字处理状态
+    STATE_STOP          // 紧急停车/冲线停车保护状态
+};
+
+// 当前小车状态，开机默认为等待发车
+CarState g_car_state = STATE_INIT; 
   
   
 /* ====================== 参数通道索引 ====================== */    
@@ -280,8 +291,8 @@ int main()
 //     }    
     
     /* ---------- 屏幕初始化 ---------- */    
-    ips200.init(FB_PATH);    
-    display_init(&ips200);    
+    // ips200.init(FB_PATH);    
+    // display_init(&ips200);    
     
     /* ---------- 摄像头初始化 ---------- */    
     if (uvc_dev.init(UVC_PATH) < 0)    
@@ -429,29 +440,31 @@ int main()
         local_angle_points(rpts_l_resample,rpts_l_resample_num,angles_l,5);
         nms_angle(angles_l,rpts_l_resample_num,angles_nms_l,5);
         max_angle(angles_l,rpts_l_resample_num,&angle_l_max,&angle_l_max_id);
+
         local_angle_points(rpts_r_resample,rpts_r_resample_num,angles_r,5);
         nms_angle(angles_r,rpts_r_resample_num,angles_nms_r,5);
         max_angle(angles_r,rpts_r_resample_num,&angle_r_max,&angle_r_max_id);
+
         find_corners();
-        check_circle();
-        run_circle();
-        // check_cross();
-        // run_cross();
+        // check_circle();
+        // run_circle();
+        check_cross();
+        run_cross();
         float follow_offset = HALF_ROAD_WIDTH;  
   
         //环内/环运行/出环阶段，向内靠 5 像素  
         if (circle_type == CIRCLE_LEFT_IN ||  circle_type == CIRCLE_LEFT_OUT )  
         {  
-            follow_offset = HALF_ROAD_WIDTH - 12.0f;  
+            follow_offset = HALF_ROAD_WIDTH - 10.0f;  
             if (follow_offset < 0.0f) follow_offset = 0.0f;  
         } 
         if (circle_type == CIRCLE_LEFT_RUNNING ) 
         {
-            follow_offset = HALF_ROAD_WIDTH + 12.0f;
+            follow_offset = HALF_ROAD_WIDTH + 10.0f;
         }
         if (circle_type == CIRCLE_LEFT_BEGIN)
         {
-            follow_offset = HALF_ROAD_WIDTH + 15.0f;
+            follow_offset = HALF_ROAD_WIDTH + 12.0f;
         }
 
         // if (track_type == TRACK_LEFT && rpts_l_resample_num <= 0) {  
@@ -470,7 +483,7 @@ int main()
                             rpts_c, rpts_c_num,  
                             angle_dist / resample_dist,  
                             follow_offset);  
-}  
+        }  
 
         //中线归一化
         normalize_midline_with_anchor(rpts_c,rpts_c_num,rpts_c_same,&rpts_c_same_num);
@@ -481,8 +494,26 @@ int main()
         else  
             rpts_c_resample_num = 0;  
 
+        // 动态调整预瞄点
+        aim_id = 30; // 直道默认看 30
+
+        if (circle_type == CIRCLE_LEFT_IN || circle_type == CIRCLE_RIGHT_IN) 
+        {
+            // 尝试增大 aim_id，利用远处弯道的曲率产生大偏差
+            aim_id = 60;  // 可以尝试 45, 50, 甚至 60
+        }
+        if (cross_type == CROSS_IN) 
+        {
+            aim_id = 40;  // 十字看远一点，避免干扰
+        }
+
         //计算图像中线偏差提供差速
         img_err_get();
+        if(cross_type == CROSS_IN || cross_type == CROSS_IN)
+        {
+            limit_float(img_err, -5.0f, 5.0f); // 十字时限制偏差，避免过度纠正
+        
+        }
             // 上半区：原二值图  
         ips200.show_gray_image(  
             0, 0, image_bin[0],  
