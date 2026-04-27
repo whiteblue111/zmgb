@@ -220,28 +220,49 @@
 &spi3{
     status = "okay";
     pinctrl-names = "default";
-    pinctrl-0 = <&spi3_pin>;
+    pinctrl-0 = <&spi3_nocs_pin>;
+    // compatible = "loongson,ls-spi-io";
+    // compatible = "loongson,ls-spi-v1";
+    compatible = "loongson,ls-spi-dma";
+    // 软件CS配置
+    num-cs = <1>;
+    cs-gpios = <&gpa5 5 GPIO_ACTIVE_LOW>;
+    // 中断设置
+    interrupt-parent = <&icu>;
+    interrupts = <7>;
+    // DMA配置
+    dmas = <&dma0 3 0xaae>, <&dma0 2 0xaae>;
+    dma-names = "tx", "rx";
 
     st7789v_or_st7735r:st7789v_or_st7735r@0{
-        status = "okay";
-        compatible = "sitronix,st7789v", "sitronix,st7735r";
-        reg = <0>;              //chip select 0:cs0  1:cs1
-        spi-max-frequency = <50000000>;
-        spi-mode = <0>;
-        rgb;
-        rotate = <0>;           // 旋转方向 0 90 180 270
-        buswidth = <8>;
-        fps = <30>;             // 帧率
-        
-        reset-gpios = <&gpa5 1 GPIO_ACTIVE_HIGH>;   // GPIO81
-        dc-gpios = <&gpa4 10 GPIO_ACTIVE_HIGH>;     // GPIO74
-        led-gpios = <&gpa4 11 GPIO_ACTIVE_LOW>;     // 背光引脚 GPIO75
+       status = "okay";
+       compatible = "sitronix,st7789v", "sitronix,st7735r";
+       reg = <0>;              //chip select 0:cs0  1:cs1
+       spi-max-frequency = <50000000>;
+       spi-mode = <0>;
+       rgb;
+       rotate = <0>;           // 旋转方向 0 90 180 270
+       buswidth = <8>;
+       fps = <50>;             // 帧率
+       
+       reset-gpios = <&gpa5 1 GPIO_ACTIVE_HIGH>;   // GPIO81
+       dc-gpios = <&gpa4 10 GPIO_ACTIVE_HIGH>;     // GPIO74
+       led-gpios = <&gpa4 11 GPIO_ACTIVE_LOW>;     // 背光引脚 GPIO75
 
-        // width = <240>;     
-        // height= <320>;      
+       // width = <240>;     
+       // height= <320>;      
 
-        debug = <0x0>;
+       debug = <0x2>;
     };
+
+    // spidev@0{
+    //     status = "okay";
+    //     compatible = "spidev";
+    //     reg = <0>;
+    //     spi-max-frequency = <10000000>;
+    // };
+
+
 };
 
 

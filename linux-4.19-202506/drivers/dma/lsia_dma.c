@@ -365,8 +365,15 @@ static int lsia_dma_set_xfer_param(struct lsia_dma_chan *chan,
 		return -EINVAL;
 
 	periph_size = (dev_width >> 1) & 0x3;
-	/* Set memory data size to 4 bytes */
-	mem_size = 0x2;
+	/*
+	 * Match memory data size to peripheral width.
+	 *
+	 * The previous fixed 4-byte MSIZE makes MEM increment by 4 even for
+	 * 1-byte peripherals (e.g. SPI 8-bit), which results in skipping bytes
+	 * (observed as 0,4,8,2,6... pattern on MOSI). Keep MSIZE aligned with
+	 * peripheral width so each DMA item consumes the expected bytes.
+	 */
+	mem_size = periph_size;
 	dma_ccr |= DMA_CCR_PSIZE(periph_size) | DMA_CCR_MSIZE(mem_size);
 
 	/* Set DMA control register */

@@ -795,7 +795,16 @@ config SPI_LS_V1
 	tristate "Loongson SPI V1 Controller Support"
 	depends on CPU_LOONGSON64 || LOONGSON_MACH2K
 	help
-	  This is the driver for Loongson spi-io master controller.
+	  This is the driver for Loongson SPI V1 controller (ls-spi-v1).
+
+config SPI_LS_DMA
+	tristate "Loongson SPI DMA Controller Support"
+	depends on CPU_LOONGSON64 || LOONGSON_MACH2K
+	select DMA_ENGINE
+	help
+	  This is the DMA-enhanced driver for Loongson SPI V1 controller.
+	  It uses the DMA engine for both TX and RX (full-duplex DMA).
+	  The implementation source is drivers/spi/spi-ls-dma.c.
 
 config SPI_LS_IO
 	tristate "Loongson SPI IO Controller Support"

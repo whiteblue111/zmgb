@@ -91,6 +91,11 @@
 		loongson,pinmux-funcsel = <PINCTL_FUNCTION1>;
 	};
 
+	spi3_nocs_pin: spi3-nocs-pin{
+		loongson,pinmux = <&gpa5 2 4>;
+		loongson,pinmux-funcsel = <PINCTL_FUNCTION1>;
+	};
+
 	pwm0_pin: pwm0-pin{
 		pwm0_mux_m0: pwm0-mux-m0{
 			loongson,pinmux = <&gpa4 0 0>;

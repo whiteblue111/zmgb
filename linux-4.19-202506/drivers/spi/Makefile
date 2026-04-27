@@ -112,5 +112,6 @@ obj-$(CONFIG_SPI_ZYNQMP_GQSPI)		+= spi-zynqmp-gqspi.o
 obj-$(CONFIG_SPI_SLAVE_TIME)		+= spi-slave-time.o
 obj-$(CONFIG_SPI_SLAVE_SYSTEM_CONTROL)	+= spi-slave-system-control.o
 obj-$(CONFIG_SPI_LS)                    += spi-ls.o
-obj-$(CONFIG_SPI_LS_V1)                    += spi-ls-v1.o
+obj-$(CONFIG_SPI_LS_V1)                 += spi-ls-v1.o
+obj-$(CONFIG_SPI_LS_DMA)                += spi-ls-dma.o
 obj-$(CONFIG_SPI_LS_IO)                    += spi-ls-io.o

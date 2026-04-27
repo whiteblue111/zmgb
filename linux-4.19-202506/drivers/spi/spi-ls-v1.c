@@ -735,7 +735,7 @@ static const struct of_device_id ls_spi_match[] = {
 	{.compatible = "loongson,ls-spi-v1",},
 	{},
 };
-MODULE_DEVICE_TABLE(of, ls_spi_id_table);
+MODULE_DEVICE_TABLE(of, ls_spi_match);
 
 static int  ls_spi_probe(struct platform_device *pdev)
 {
@@ -746,7 +746,7 @@ static int  ls_spi_probe(struct platform_device *pdev)
 	struct device_node *np  = pdev->dev.of_node;
 	int ret =0;
 
-	master =spi_alloc_master(&pdev->dev,sizeof(ls_spi));
+	master =spi_alloc_master(&pdev->dev,sizeof(struct ls_spi));
 	if(!master){
 		dev_err(&pdev->dev,"Unable to alloc SPI Master\n");
 		return -ENOMEM;
@@ -767,10 +767,10 @@ static int  ls_spi_probe(struct platform_device *pdev)
 	}
 
 	ls_spi->pdata =pdata;
-	master->bus_num =(unsigned int)ls_spi->pdata->bus_num;
-	if(master->bus_num <0 || master->bus_num >4){
-		dev_err(&pdev->dev,"No this channel, bus_num = %d\n",master->bus_num);
-	}
+	master->bus_num = -1;//(unsigned int)ls_spi->pdata->bus_num;
+	// if(master->bus_num <0 || master->bus_num >4){
+	// 	dev_err(&pdev->dev,"No this channel, bus_num = %d\n",master->bus_num);
+	// }
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	ls_spi->base = devm_ioremap_resource(&pdev->dev, res);
@@ -801,6 +801,12 @@ static int  ls_spi_probe(struct platform_device *pdev)
 
 	master->mode_bits = MODE;
 	master->num_chipselect =ls_spi->pdata->num_chipselect;
+
+	if (master->num_chipselect == 0) {
+		dev_warn(&pdev->dev, "num_chipselect not specified, defaulting to 1\n");
+		master->num_chipselect = 1;
+	}
+
 #ifdef CONFIG_OF
 	master->dev.of_node = pdev->dev.of_node;
 #endif
@@ -836,16 +842,23 @@ static int ls_spi_remove(struct platform_device *dev)
 {
 	struct ls_spi *ls_spi =platform_get_drvdata(dev);
 
+	/*
+	 * Force controller disable on remove to deassert hardware CS.
+	 * See spi-ls-dma.c for details.
+	 */
+	ls_spi->cs_change = 0;
+	ls_spi_disable(ls_spi);
+
 	spi_master_put(ls_spi->master);
 
 	platform_set_drvdata(dev,NULL);
 
-	free_irq(ls_spi->irq,ls_spi);
-	iounmap(ls_spi->base);
-	release_resource(ls_spi->base);
-	kfree(ls_spi->base);
+	// free_irq(ls_spi->irq,ls_spi);
+	// iounmap(ls_spi->base);
+	// release_resource(ls_spi->base);
+	// kfree(ls_spi->base);
 
-	kfree(ls_spi);
+	// kfree(ls_spi);
 
 	dev_info(&dev->dev,"driver remove\n");
 
