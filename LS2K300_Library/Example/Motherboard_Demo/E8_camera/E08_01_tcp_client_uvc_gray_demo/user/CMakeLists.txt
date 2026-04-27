@@ -83,4 +83,5 @@ ${OpenCV_LIBS}
 tflm          # 链接TFLM静态库（必须）
 pthread       # 线程库（TFLM内部使用）
 m             # 数学库（算子计算依赖）
+ncnn
 )

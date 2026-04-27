@@ -41,6 +41,9 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 
+// Select capture format FOURCC at compile time.
+#define UVC_USE_MJPG  0  // 0: YUY2  1: MJPG
+
 #define UVC_WIDTH     160
 #define UVC_HEIGHT    120
 #define UVC_FPS       180

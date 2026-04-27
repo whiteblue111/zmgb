@@ -309,7 +309,12 @@ int8 zf_device_uvc::init(const char *path)
         std::cout << "find uvc camera Successfully." << std::endl;
     }
 
-    cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+    #if(UVC_USE_MJPG == 0)
+        cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('Y', 'U', 'Y', '2'));
+    #else
+        cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+    #endif
+
     cap.set(cv::CAP_PROP_FRAME_WIDTH, UVC_WIDTH);
     cap.set(cv::CAP_PROP_FRAME_HEIGHT, UVC_HEIGHT);
     cap.set(cv::CAP_PROP_FPS, UVC_FPS);
