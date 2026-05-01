@@ -58,6 +58,7 @@ include_directories(
 link_directories(
     ../../libraries/zf_components/tflm/lib
     ../../libraries/zf_components/ncnn/lib
+
 )
 
 # 业务源文件
@@ -78,10 +79,11 @@ set_target_properties(${PROJ_NAME} PROPERTIES
 
 # 链接依赖库
 target_link_libraries(
-${PROJ_NAME} 
-${OpenCV_LIBS}
-tflm          # 链接TFLM静态库（必须）
-pthread       # 线程库（TFLM内部使用）
-m             # 数学库（算子计算依赖）
-ncnn
+    ${PROJ_NAME} 
+    ${OpenCV_LIBS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../liblq_camera_ex.a   # <--- 注意这里的 /../ 表示上一级目录
+    tflm          
+    pthread       
+    m             
+    dl            
 )

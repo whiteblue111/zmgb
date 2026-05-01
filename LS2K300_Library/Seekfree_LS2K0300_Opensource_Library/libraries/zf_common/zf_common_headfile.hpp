@@ -73,7 +73,7 @@
 
 
 //===================================================外部组件库===================================================
-#include "net.h" // for ncnn
+// #include "net.h" // for ncnn
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc/imgproc.hpp>  // for cv::cvtColor
 #include <opencv2/highgui/highgui.hpp> // for cv::VideoCapture
@@ -83,7 +83,7 @@
 #include <chrono>
 #include <atomic>
 //===================================================外部组件库===================================================
-
+#include "lq_camera_ex.hpp"
 
 //===================================================TFLITE组件库===================================================
 #include "tensorflow/lite/core/c/common.h"
@@ -100,6 +100,16 @@
 
 //===================================================用户自定义文件===================================================
 #include "loong_cnn_model_simple.h"
+
+#include "circle.hpp"
+#include "cross.hpp"
+#include "display.hpp"
+#include "image.hpp"
+#include "imgproc.hpp"
+#include "imu0.hpp"
+#include "math.hpp"
+#include "motor.hpp"
+#include "pid.hpp"
 //===================================================用户自定义文件===================================================
 
 
