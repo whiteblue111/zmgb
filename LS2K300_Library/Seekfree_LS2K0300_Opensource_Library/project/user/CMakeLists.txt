@@ -51,7 +51,7 @@ include_directories(
     ../../libraries/zf_components/tflm/tensorflow/lite/core/api
     ../../libraries/zf_components/tflm/tensorflow/lite/core/c
     ../../libraries/zf_components/tflm/tensorflow/lite/schema
-    ../../libraries/zf_components/ncnn/include/ncnn
+    "/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include"
 )
 
 # 静态库路径
@@ -81,8 +81,10 @@ set_target_properties(${PROJ_NAME} PROPERTIES
 target_link_libraries(
     ${PROJ_NAME} 
     ${OpenCV_LIBS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../liblq_camera_ex.a   # <--- 注意这里的 /../ 表示上一级目录
+    ${CMAKE_CURRENT_SOURCE_DIR}/../liblq_camera_ex.a
     tflm          
+    ncnn          # <--- 新增：链接 NCNN 动态库
+    gomp          # <--- 新增：链接 OpenMP 库 (我们刚传进板子的那个)
     pthread       
     m             
     dl            

@@ -825,6 +825,30 @@ home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/pr
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/motor.cpp.s
 .PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/motor.cpp.s
 
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.o: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.o
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.o
+
+# target to build an object file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.o
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.o
+
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.i: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.i
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.i
+
+# target to preprocess a source file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.i
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.i
+
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.s: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.s
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.s
+
+# target to generate assembly for a file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.s
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.cpp.s
+
 home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.o: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.cpp.o
 .PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.o
 
@@ -848,6 +872,54 @@ home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/pr
 home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.cpp.s
 .PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.cpp.s
+
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.o: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.o
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.o
+
+# target to build an object file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.o
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.o
+
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.i: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.i
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.i
+
+# target to preprocess a source file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.i
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.i
+
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.s: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.s
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.s
+
+# target to generate assembly for a file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.s
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.cpp.s
+
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.o: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.o
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.o
+
+# target to build an object file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.o
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.o
+
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.i: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.i
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.i
+
+# target to preprocess a source file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.i
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.i
+
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.s: home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.s
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.s
+
+# target to generate assembly for a file
+home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project.dir/build.make CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.s
+.PHONY : home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.cpp.s
 
 main.o: main.cpp.o
 .PHONY : main.o
@@ -969,9 +1041,18 @@ help:
 	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/motor.o"
 	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/motor.i"
 	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/motor.s"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.o"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.i"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/ncnn.s"
 	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.o"
 	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.i"
 	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/pid.s"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.o"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.i"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/redbrick.s"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.o"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.i"
+	@echo "... home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/vision.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

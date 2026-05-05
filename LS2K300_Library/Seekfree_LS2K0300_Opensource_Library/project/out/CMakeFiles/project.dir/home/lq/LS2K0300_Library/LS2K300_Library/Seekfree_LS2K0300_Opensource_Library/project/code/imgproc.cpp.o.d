@@ -511,6 +511,22 @@ CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K030
  /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../../libraries/zf_device/zf_device_dl1x.hpp \
  /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../../libraries/zf_components/seekfree_assistant/seekfree_assistant.hpp \
  /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../../libraries/zf_components/seekfree_assistant/seekfree_assistant_interface.hpp \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/net.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/blob.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/mat.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/allocator.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/platform.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/ncnn_export.h \
+ /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/c++/8.3.0/stack \
+ /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/c++/8.3.0/bits/stl_stack.h \
+ /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/c++/8.3.0/fenv.h \
+ /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/fenv.h \
+ /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/bits/fenv.h \
+ /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/bits/fenvinline.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/option.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/layer.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/modelbin.h \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/libraries/zf_components/ncnn/include/ncnn/paramdict.h \
  /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/c++/8.3.0/fstream \
  /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/c++/8.3.0/bits/basic_file.h \
  /opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/loongarch64-linux-gnu/sysroot/usr/include/c++/8.3.0/bits/c++io.h \
@@ -621,4 +637,7 @@ CMakeFiles/project.dir/home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K030
  /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../code/motor.hpp \
  /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../code/pid.hpp \
  /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../code/pid.hpp \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../code/ncnn.hpp \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../code/vision.hpp \
+ /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/user/../code/redbrick.hpp \
  /home/lq/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/project/code/imgproc.hpp

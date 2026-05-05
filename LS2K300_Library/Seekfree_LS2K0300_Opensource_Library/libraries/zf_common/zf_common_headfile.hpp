@@ -73,7 +73,7 @@
 
 
 //===================================================外部组件库===================================================
-// #include "net.h" // for ncnn
+#include <ncnn/net.h> // for ncnn
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc/imgproc.hpp>  // for cv::cvtColor
 #include <opencv2/highgui/highgui.hpp> // for cv::VideoCapture
@@ -110,6 +110,9 @@
 #include "math.hpp"
 #include "motor.hpp"
 #include "pid.hpp"
+#include "ncnn.hpp"
+#include "vision.hpp"
+#include "redbrick.hpp"
 //===================================================用户自定义文件===================================================
 
 

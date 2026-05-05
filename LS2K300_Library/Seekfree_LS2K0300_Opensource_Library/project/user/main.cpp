@@ -1,8 +1,5 @@
 
-
 // #include "zf_common_headfile.hpp"
-
-
 // #include <iostream>
 // #include <opencv2/opencv.hpp>
 
@@ -139,7 +136,9 @@ using namespace cv;
    
 /* ====================== 配置项 ====================== */    
 #define SERVER_IP "192.168.196.230"    
-#define PORT      8086    
+#define PORT      8086   
+
+ncnn::Net my_net;
    
 #define KEY_1_PATH ZF_GPIO_KEY_1  
 #define KEY_2_PATH ZF_GPIO_KEY_2
@@ -198,7 +197,16 @@ int   rpts_rc_num = 0;
    
 // ===== 十字用 =====    
 float begin_x = 50.0f;  
-float begin_y = 60.0f;    
+float begin_y = 60.0f;   
+
+// ====================== 视觉绕行全局控制 ======================
+bool  g_is_bypassing_binoculars = false; // 是否正在执行望远镜绕行
+int   g_bypass_timer = 0;                // 绕行持续帧数计时器
+const int BYPASS_MAX_FRAMES = 80;        // 绕行持续时间（假设30帧/秒，80帧大约2.5秒，根据你的车速调）
+const float BYPASS_OFFSET = 35.0f;       // 向左绕行的偏移量（像素），越大绕得越宽
+// =============================================================
+
+RedBlockAvoider g_brick_avoider; // [新增] 全局避障器对象
    
 // 你 cross.cpp 里是 extern float mapx[120][160], mapy[120][160];    
 float mapx[120][160] = {0};    
@@ -393,13 +401,21 @@ int main()
     track_type = TRACK_RIGHT ;
     motor_init();   
     imu_init(); 
+    printf("[main] 正在加载 NCNN 模型...\n");
+    my_net.opt.num_threads = 2; 
+    my_net.opt.use_fp16_arithmetic = false;
+    my_net.opt.use_fp16_storage = false;
+    my_net.load_param("tiny_classifier_fp32.ncnn.param");
+    my_net.load_model("tiny_classifier_fp32.ncnn.bin");
+    printf("[main] NCNN 模型加载完毕！\n");
    
     /* ---------- 注册退出处理 ---------- */    
     atexit(cleanup);    
     signal(SIGINT, sigint_handler);    
    
     /* ---------- TCP连接 ---------- */    
-    bool tcp_ok = (tcp_client_dev.init(SERVER_IP, PORT) == 0);    
+    // bool tcp_ok = (tcp_client_dev.init(SERVER_IP, PORT) == 0);    
+    bool tcp_ok = false;
     if (tcp_ok)    
     {    
         seekfree_assistant_interface_init(tcp_send_wrap, tcp_read_wrap);    
@@ -408,8 +424,8 @@ int main()
      }    
    
     /* ---------- 屏幕初始化 ---------- */    
-    ips200.init(FB_PATH);    
-    display_init(&ips200);    
+    // ips200.init(FB_PATH);    
+    // display_init(&ips200);    
    
     /* ---------- 摄像头初始化 ---------- */    
     // [修改点3] 初始化龙邱摄像头类，宽高参数使用UVC默认宏
@@ -422,7 +438,7 @@ int main()
    
     /* ---------- 启动速度环定时器（5ms） ---------- */     
     pit_timer.init_ms(5, speed_cascaded_5ms); //串环  
-    fps_timer.init_ms(20, fps_callback);    
+    fps_timer.init_ms(50, fps_callback);    
   
     /*------------角度环（10ms)---------------------*/  
     img_timer.init_ms(10,yaw_callback_speed);  
@@ -431,6 +447,7 @@ int main()
    
     /* ====================== 主循环 ====================== */    
     cv::Mat raw_img, gray_img; // [修改点4] 声明OpenCV Mat对象用于接收图像
+    cv::Mat rgb565_img;
 
     while (1)    
     {    
@@ -465,17 +482,27 @@ int main()
         if (!camera.get_frame_raw_gray(raw_img, gray_img) || raw_img.empty()) {
             continue;    
         }
-
-        // --- 软件倒装翻转 摄像头反着装的---
         cv::flip(raw_img, raw_img, -1);
         cv::flip(gray_img, gray_img, -1);
-
+        process_car_vision(raw_img);//模型
         //压缩图像，只处理灰度
-        cv::resize(raw_img, raw_img, cv::Size(UVC_WIDTH, UVC_HEIGHT), 0, 0, cv::INTER_NEAREST);
+        cv::resize(raw_img, raw_img, cv::Size(160, 120), 0, 0, cv::INTER_NEAREST);
         cv::resize(gray_img, gray_img, cv::Size(160, 120), 0, 0,cv::INTER_NEAREST);
 
+
+        // 传入翻转后的彩色图，识别红砖并更新内部状态机
+        g_brick_avoider.process(raw_img, false); 
+        
+        // 获取避障指令
+        // float avoid_offset = g_brick_avoider.get_avoid_offset();
+        float avoid_offset = 0.0f;
+        // TrackForceType force_dir = g_brick_avoider.get_force_track_type();
+        TrackForceType force_dir = FORCE_NONE;
+
+
+
+
         // --- 转换为逐飞原有的RGB565格式 ---
-        cv::Mat rgb565_img;
         cv::cvtColor(raw_img, rgb565_img, cv::COLOR_BGR2BGR565);
         rgb_ptr = (uint16_t*)rgb565_img.data; 
 
@@ -500,31 +527,79 @@ int main()
         ipts_r_num = EDGELINE_MAX;      
         findline_lefthand_adaptive (bin_mat, sx_l, sy_l, ipts_l,  &ipts_l_num);    
         findline_righthand_adaptive(bin_mat, sx_r, sy_r, ipts_r,  &ipts_r_num);  
-         // -------- 9.5 边线逆透视（映射到IPM平面）--------  
-        //清零防止溢出
-        rpts_l_num = 0 ;
+        // ====================================================================
+        // ✨ 新增：高度截断逻辑 (裁掉高于图像顶端 10 行的边线点)
+        // ====================================================================
+        int cut_y_threshold = 5; // 设定阈值，10代表屏蔽顶端 0~9 行区域
+
+        // 截断左线
+        int valid_l_num = 0;
+        for (int i = 0; i < ipts_l_num; i++) {
+            // Y坐标大于阈值，说明点在画面下方（有效区）
+            if (ipts_l[i][1] >= cut_y_threshold) { 
+                ipts_l[valid_l_num][0] = ipts_l[i][0];
+                ipts_l[valid_l_num][1] = ipts_l[i][1];
+                valid_l_num++;
+            } else {
+                // 因为巡线是从下往上找的，一旦碰到高于阈值的点，直接打断，后面的点全扔掉
+                break; 
+            }
+        }
+        ipts_l_num = valid_l_num; // 更新真实有效的点数
+
+        // 截断右线
+        int valid_r_num = 0;
+        for (int i = 0; i < ipts_r_num; i++) {
+            if (ipts_r[i][1] >= cut_y_threshold) {
+                ipts_r[valid_r_num][0] = ipts_r[i][0];
+                ipts_r[valid_r_num][1] = ipts_r[i][1];
+                valid_r_num++;
+            } else {
+                break; 
+            }
+        }
+        ipts_r_num = valid_r_num; // 更新真实有效的点数
+        // -------- 9.5 边线逆透视（查表极速版） --------  
+        rpts_l_num = 0;
         rpts_r_num = 0;
-        for (int i = 0; i < ipts_l_num; i++)  
-        {  
-            float u, v;  
-            if (warp_point_ipm(ipts_l[i][0], ipts_l[i][1], u, v) && rpts_l_num < POINTS_MAX_LEN) 
-            {   
-                rpts_l[rpts_l_num][0] = u;  
-                rpts_l[rpts_l_num][1] = v;  
-                rpts_l_num++;  
-            }  
-        }  
-  
-        for (int i = 0; i < ipts_r_num; i++)  
-        {  
-            float u, v;  
-            if (warp_point_ipm(ipts_r[i][0], ipts_r[i][1], u, v) && rpts_r_num < POINTS_MAX_LEN)
-            {  
-                rpts_r[rpts_r_num][0] = u;  
-                rpts_r[rpts_r_num][1] = v;  
-                rpts_r_num++;  
-            }  
-        }  
+
+        // 左边线查表映射
+        for (int i = 0; i < ipts_l_num; i++) 
+        { 
+            // 1. 获取原始图像坐标并取整（确保坐标在 160x120 范围内）
+            int px = (int)(ipts_l[i][0] + 0.5f); 
+            int py = (int)(ipts_l[i][1] + 0.5f);
+
+            // 2. 边界检查，防止索引越界导致程序崩溃
+            if (px >= 0 && px < 160 && py >= 0 && py < 120) 
+            {
+                // 3. 核心步骤：使用 g_ipm_valid 过滤掉无效点（如地平线以上的噪点）
+                if (g_ipm_valid[py][px] && rpts_l_num < POINTS_MAX_LEN) 
+                {   
+                    // 4. 直接映射到物理坐标
+                    rpts_l[rpts_l_num][0] = g_ipm_lut_u[py][px];  
+                    rpts_l[rpts_l_num][1] = g_ipm_lut_v[py][px];  
+                    rpts_l_num++;  
+                } 
+            }
+        }
+
+        // 右边线处理逻辑同上
+        for (int i = 0; i < ipts_r_num; i++) 
+        { 
+            int px = (int)(ipts_r[i][0] + 0.5f);
+            int py = (int)(ipts_r[i][1] + 0.5f);
+
+            if (px >= 0 && px < 160 && py >= 0 && py < 120) 
+            {
+                if (g_ipm_valid[py][px] && rpts_r_num < POINTS_MAX_LEN) 
+                {  
+                    rpts_r[rpts_r_num][0] = g_ipm_lut_u[py][px];  
+                    rpts_r[rpts_r_num][1] = g_ipm_lut_v[py][px];  
+                    rpts_r_num++;  
+                } 
+            }
+        } 
 
         // 9) 逆透视后左右边线等距采样（新增核心）  
         rpts_l_resample_num  = EDGELINE_MAX;  
@@ -585,6 +660,55 @@ int main()
         // {
         //     follow_offset = HALF_ROAD_WIDTH + 3.0f;
         // }
+       // 在 main() 函数的 while(1) 中修改这部分：
+
+       // ====================== 边线分配与绕行控制 ======================
+        
+
+        // 🥇 最高优先级：特定视觉目标绕行 (望远镜左绕行)
+        if (g_is_bypassing_binoculars) {
+            
+            track_type = TRACK_LEFT; // 左侧绕行，必须死死咬住左边线！
+            
+            // 偏移量减小，意味着车体中线向左侧边线靠拢，实现左绕
+            follow_offset = HALF_ROAD_WIDTH - BYPASS_OFFSET; 
+            if (follow_offset < 0.0f) follow_offset = 0.0f; // 极限保护
+            
+            g_target_speed = 1.0f; // 绕行时强制降速求稳，避免甩尾出界
+            
+            // 计时器自增
+            g_bypass_timer++;
+            if (g_bypass_timer >= BYPASS_MAX_FRAMES) {
+                // 绕行时间结束，恢复正常状态
+                g_is_bypassing_binoculars = false;
+                std::cout << "✅ 望远镜绕行结束，恢复正常巡线！" << std::endl;
+                // 可选：beep_off();
+            }
+        }
+        // 🥈 第二优先级：红砖避障 (原有逻辑)
+        else if (force_dir == FORCE_LEFT_LINE) {
+            track_type = TRACK_LEFT;
+            follow_offset = HALF_ROAD_WIDTH - avoid_offset;
+            if (follow_offset < 0.0f) follow_offset = 0.0f;
+            g_target_speed = 1.0f; 
+        }
+        else if (force_dir == FORCE_RIGHT_LINE) {
+            track_type = TRACK_RIGHT;
+            follow_offset = HALF_ROAD_WIDTH - avoid_offset; // 这里注意，如果是向右靠，可能是 + avoid_offset，取决于你的底层推算
+            if (follow_offset < 0.0f) follow_offset = 0.0f;
+            g_target_speed = 1.0f;
+        }
+        // 🥉 第三优先级：正常巡线 (无特殊目标、无红砖、无元素)
+        else if (force_dir == FORCE_NONE && circle_type == CIRCLE_NONE) { 
+            const int switch_margin = 3;  
+            if (rpts_l_resample_num > rpts_r_resample_num + switch_margin) {  
+                track_type = TRACK_LEFT;  
+            } else if (rpts_r_resample_num > rpts_l_resample_num + switch_margin) {  
+                track_type = TRACK_RIGHT;  
+            }  
+            // 恢复正常巡线速度（如果你的系统会自动从助手同步速度，这里可以不写，或者写成默认速度）
+            // g_target_speed = 2.0f; 
+        }
 
         
         if (track_type == TRACK_LEFT) {  
@@ -638,14 +762,14 @@ int main()
         snprintf(info, sizeof(info), "img_err: %.2f", img_err);  
         ips200.show_string(4, UVC_HEIGHT + 10, info);  
         
-        ips200.show_uint(30, UVC_HEIGHT + 30, rpts_l_resample_num, 3);  
-        ips200.show_uint(80, UVC_HEIGHT + 30, rpts_r_resample_num, 3);  
-        
-        ips200.show_string(4,   UVC_HEIGHT + 45, (char*)"S_l:");  
-        ips200.show_string(50,  UVC_HEIGHT + 45, (char*)(is_straight_l ? "YES" : "NO "));  
-        ips200.show_string(90,  UVC_HEIGHT + 45, (char*)"S_r:");  
-        ips200.show_string(136, UVC_HEIGHT + 45, (char*)(is_straight_r ? "YES" : "NO "));  
-        
+        // ips200.show_uint(30, UVC_HEIGHT + 30, rpts_l_resample_num, 3);  
+        // ips200.show_uint(80, UVC_HEIGHT + 30, rpts_r_resample_num, 3);  
+         
+        ips200.show_string(4, UVC_HEIGHT + 30, (char*)"block_w:");
+        ips200.show_uint(80, UVC_HEIGHT + 30, block_w, 5);
+        ips200.show_string(4, UVC_HEIGHT + 45, (char*)"block_h:");  
+        ips200.show_float(80, UVC_HEIGHT + 45, block_h, 2, 6);  
+
         ips200.show_string(4, UVC_HEIGHT + 60, (char*)"Circle:");  
         ips200.show_string(60, UVC_HEIGHT + 60, (char*)"                ");  
         ips200.show_string(60, UVC_HEIGHT + 60,  
@@ -776,23 +900,33 @@ int main()
             }  
         }  
 
-        /* -------- 14. 逐飞助手发送数据 -------- */    
-        if (tcp_ok)    
-        {    
-            seekfree_assistant_camera_send();    
+        // /* -------- 14. 逐飞助手发送数据 -------- */    
+        // if (tcp_ok)    
+        // {    
+        //     seekfree_assistant_camera_send();    
    
-            /* 发送示波器：偏差/均速/目标速/左轮速/右轮速 */    
-            seekfree_assistant_oscilloscope_data.channel_num = 5;    
-            seekfree_assistant_oscilloscope_data.data[0] = img_err;    
-            seekfree_assistant_oscilloscope_data.data[1] = g_speed;    
-            seekfree_assistant_oscilloscope_data.data[2] = g_target_speed;    
-            seekfree_assistant_oscilloscope_data.data[3] = g_speed_l;    
-            seekfree_assistant_oscilloscope_data.data[4] = g_speed_r;    
-            seekfree_assistant_oscilloscope_send(&seekfree_assistant_oscilloscope_data);    
-        }    
+        //     /* 发送示波器：偏差/均速/目标速/左轮速/右轮速 */    
+        //     seekfree_assistant_oscilloscope_data.channel_num = 5;    
+        //     seekfree_assistant_oscilloscope_data.data[0] = img_err;    
+        //     seekfree_assistant_oscilloscope_data.data[1] = g_speed;    
+        //     seekfree_assistant_oscilloscope_data.data[2] = g_target_speed;    
+        //     seekfree_assistant_oscilloscope_data.data[3] = g_speed_l;    
+        //     seekfree_assistant_oscilloscope_data.data[4] = g_speed_r;    
+        //     seekfree_assistant_oscilloscope_send(&seekfree_assistant_oscilloscope_data);    
+        // }    
         
       
     }    
 
     return 0;    
 }
+
+// #include "zf_common_headfile.hpp"
+// #include <iostream>
+// #include <opencv2/opencv.hpp>
+// int main()
+// {
+//     my_ncnn_env_test();      // 这是刚才跑通的自检
+//     my_ncnn_photo_demo();    // 加上这行！真正的图片分类推理！
+//     return 0;
+// }
