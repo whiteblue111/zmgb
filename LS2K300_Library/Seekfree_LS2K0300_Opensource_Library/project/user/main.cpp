@@ -6,7 +6,7 @@
 
 
 // // ====================== 网络与摄像头配置宏定义 ======================
-// #define SERVER_IP "192.168.196.230"   // TCP服务端IP地址（你的电脑IP）
+// #define SERVER_IP "192.168.137.1"   // TCP服务端IP地址（你的电脑IP）
 // #define PORT 8086                  // TCP通信端口号
 
 // // 定义摄像头分辨率 (替代原来的 UVC_WIDTH 和 UVC_HEIGHT)
@@ -196,8 +196,8 @@ int   rpts_lc_num = 0;
 int   rpts_rc_num = 0;    
    
 // ===== 十字用 =====    
-float begin_x = 50.0f;  
-float begin_y = 60.0f;   
+float begin_x = 10.0f;  
+float begin_y = 80.0f;   
 
 // ====================== 视觉绕行全局控制 ======================
 bool  g_is_bypassing_binoculars = false; // 是否正在执行望远镜绕行
@@ -267,6 +267,57 @@ extern float  seekfree_assistant_parameter[SEEKFREE_ASSISTANT_SET_PARAMETR_COUNT
 extern vuint8 seekfree_assistant_parameter_update_flag[SEEKFREE_ASSISTANT_SET_PARAMETR_COUNT];    
 #endif    
 
+// 辅助函数：防止索引越界
+inline int limit_index(int val, int min_val, int max_val) {
+    if (val < min_val) return min_val;
+    if (val > max_val) return max_val;
+    return val;
+}
+
+// 辅助函数：防止画图坐标超出屏幕导致段错误崩溃
+inline uint16 clamp_coord(float coord, uint16 max_limit) {
+    if (coord < 0) return 0;
+    if (coord >= max_limit) return max_limit - 1;
+    return (uint16)coord;
+}
+
+// -------------------------------------------------------------------------
+// 新增函数：绘制最大角度点的前后计算向量
+// -------------------------------------------------------------------------
+void draw_max_angle_vectors(zf_device_ips200 &ips, float pts_in[][2], int num, int max_id, int dist, uint16 color) 
+{
+    // 点数太少或索引不合法时跳过
+    if (num < 2 || max_id < 0 || max_id >= num) return;
+
+    // 获取前后距离 dist 的参考点（带边界保护）
+    int idx_prev = limit_index(max_id - dist, 0, num - 1);
+    int idx_next = limit_index(max_id + dist, 0, num - 1);
+
+    // 转换坐标并防止越界，这里假设你的图像有效区域是 UVC_WIDTH x UVC_HEIGHT
+    uint16 px = clamp_coord(pts_in[idx_prev][0], UVC_WIDTH);
+    uint16 py = clamp_coord(pts_in[idx_prev][1], UVC_HEIGHT);
+    
+    uint16 cx = clamp_coord(pts_in[max_id][0], UVC_WIDTH);
+    uint16 cy = clamp_coord(pts_in[max_id][1], UVC_HEIGHT);
+    
+    uint16 nx = clamp_coord(pts_in[idx_next][0], UVC_WIDTH);
+    uint16 ny = clamp_coord(pts_in[idx_next][1], UVC_HEIGHT);
+
+    // 用特定颜色画出组成角度的两根向量
+    ips.draw_line(px, py, cx, cy, color);
+    ips.draw_line(cx, cy, nx, ny, color);
+
+    // 在最大角度点(拐点)中心画一个 3x3 的加粗色块，使其更醒目
+    for(int i = -1; i <= 1; i++) {
+        for(int j = -1; j <= 1; j++) {
+            int draw_x = cx + i;
+            int draw_y = cy + j;
+            if (draw_x >= 0 && draw_x < UVC_WIDTH && draw_y >= 0 && draw_y < UVC_HEIGHT) {
+                ips.draw_point(draw_x, draw_y, color);
+            }
+        }
+    }
+}
 //查看帧率  
 void fps_callback()  
 {  
@@ -424,8 +475,8 @@ int main()
      }    
    
     /* ---------- 屏幕初始化 ---------- */    
-    // ips200.init(FB_PATH);    
-    // display_init(&ips200);    
+    ips200.init(FB_PATH);    
+    display_init(&ips200);    
    
     /* ---------- 摄像头初始化 ---------- */    
     // [修改点3] 初始化龙邱摄像头类，宽高参数使用UVC默认宏
@@ -438,7 +489,7 @@ int main()
    
     /* ---------- 启动速度环定时器（5ms） ---------- */     
     pit_timer.init_ms(5, speed_cascaded_5ms); //串环  
-    fps_timer.init_ms(50, fps_callback);    
+    // fps_timer.init_ms(50, fps_callback);    
   
     /*------------角度环（10ms)---------------------*/  
     img_timer.init_ms(10,yaw_callback_speed);  
@@ -770,15 +821,21 @@ int main()
         ips200.show_string(4, UVC_HEIGHT + 45, (char*)"block_h:");  
         ips200.show_float(80, UVC_HEIGHT + 45, block_h, 2, 6);  
 
-        ips200.show_string(4, UVC_HEIGHT + 60, (char*)"Circle:");  
-        ips200.show_string(60, UVC_HEIGHT + 60, (char*)"                ");  
-        ips200.show_string(60, UVC_HEIGHT + 60,  
-            (char*)((circle_type >= 0 && circle_type < CIRCLE_NUM) ? circle_type_name[circle_type] : "UNKNOWN"));  
+        // ips200.show_string(4, UVC_HEIGHT + 60, (char*)"Circle:");  
+        // ips200.show_string(60, UVC_HEIGHT + 60, (char*)"                ");  
+        // ips200.show_string(60, UVC_HEIGHT + 60,  
+        //     (char*)((circle_type >= 0 && circle_type < CIRCLE_NUM) ? circle_type_name[circle_type] : "UNKNOWN"));  
         
         ips200.show_string(4,   UVC_HEIGHT + 75, (char*)"aL:");  
-        ips200.show_float (30,  UVC_HEIGHT + 75, angle_l_max, 3, 7);  
+        ips200.show_float (30,  UVC_HEIGHT + 75, angle_l_max, 3, 3);  
         ips200.show_string(90,  UVC_HEIGHT + 75, (char*)"idL:");  
-        ips200.show_uint  (128, UVC_HEIGHT + 75, (uint32)angle_l_max_id, 3);  
+        ips200.show_uint  (128, UVC_HEIGHT + 75, (uint32)angle_l_max_id, 3); 
+
+        ips200.show_string(4,   UVC_HEIGHT + 60, (char*)"aR:");  
+        ips200.show_float (30,  UVC_HEIGHT + 60, angle_r_max, 3, 3);  
+        ips200.show_string(90,  UVC_HEIGHT  + 60, (char*)"idR:");  
+        ips200.show_uint  (128, UVC_HEIGHT + 60, (uint32)angle_r_max_id, 3);
+
         
         ips200.show_string(4, UVC_HEIGHT + 90, (char*)"r0x:");  
         if (rpts_r_resample_num > 0) ips200.show_float(40, UVC_HEIGHT + 90, rpts_r_resample[0][0], 2, 6);  
@@ -891,7 +948,6 @@ int main()
                 ips200.draw_point(x, y, RGB565_WHITE); // 左角点白色  
             }  
         }  
-   
         if (Lpt_r_found && Lpt_r_id >= 0 && Lpt_r_id < rpts_r_resample_num) {  
             int x = (int)(rpts_r_resample[Lpt_r_id][0] + 0.5f);  
             int y = (int)(rpts_r_resample[Lpt_r_id][1] + 0.5f);  
@@ -899,21 +955,38 @@ int main()
                 ips200.draw_point(x, y, RGB565_BLUE);  // 右角点蓝色  
             }  
         }  
+        /*===============================画远线=============================*/
+        for (int i = 0; i < far_rpts_l_num; i++) {  
+            int x = (int)(far_rpts_l[i][0] + 0.5f);  
+            int y = (int)(far_rpts_l[i][1] + 0.5f) ;  
+            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_GREEN);  
+        }  
+        for (int i = 0; i < far_rpts_r_num; i++) {  
+            int x = (int)(far_rpts_r[i][0] + 0.5f);  
+            int y = (int)(far_rpts_r[i][1] + 0.5f) ;  
+            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_RED);  
+        }  
+        for (int i = 0; i < far_rpts_c_num; i++) {  
+            int x = (int)(far_rpts_c[i][0] + 0.5f);  
+            int y = (int)(far_rpts_c[i][1] + 0.5f) ;  
+            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_YELLOW);  
+        }
 
-        // /* -------- 14. 逐飞助手发送数据 -------- */    
-        // if (tcp_ok)    
-        // {    
-        //     seekfree_assistant_camera_send();    
+
+        /* -------- 14. 逐飞助手发送数据 -------- */    
+        if (tcp_ok)    
+        {    
+            seekfree_assistant_camera_send();    
    
-        //     /* 发送示波器：偏差/均速/目标速/左轮速/右轮速 */    
-        //     seekfree_assistant_oscilloscope_data.channel_num = 5;    
-        //     seekfree_assistant_oscilloscope_data.data[0] = img_err;    
-        //     seekfree_assistant_oscilloscope_data.data[1] = g_speed;    
-        //     seekfree_assistant_oscilloscope_data.data[2] = g_target_speed;    
-        //     seekfree_assistant_oscilloscope_data.data[3] = g_speed_l;    
-        //     seekfree_assistant_oscilloscope_data.data[4] = g_speed_r;    
-        //     seekfree_assistant_oscilloscope_send(&seekfree_assistant_oscilloscope_data);    
-        // }    
+            /* 发送示波器：偏差/均速/目标速/左轮速/右轮速 */    
+            seekfree_assistant_oscilloscope_data.channel_num = 5;    
+            seekfree_assistant_oscilloscope_data.data[0] = img_err;    
+            seekfree_assistant_oscilloscope_data.data[1] = g_speed;    
+            seekfree_assistant_oscilloscope_data.data[2] = g_target_speed;    
+            seekfree_assistant_oscilloscope_data.data[3] = g_speed_l;    
+            seekfree_assistant_oscilloscope_data.data[4] = g_speed_r;    
+            seekfree_assistant_oscilloscope_send(&seekfree_assistant_oscilloscope_data);    
+        }    
         
       
     }    

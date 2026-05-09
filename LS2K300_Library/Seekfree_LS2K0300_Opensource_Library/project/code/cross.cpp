@@ -46,12 +46,26 @@ int far_angles_l_num, far_angles_r_num;
 float far_angles_nms_l[FAR_POINTS_MAX_LEN];
 float far_angles_nms_r[FAR_POINTS_MAX_LEN];
 int far_angles_nms_l_num, far_angles_nms_r_num;
+//边线最大角度
+float far_angle_l_max, far_angle_r_max;
+int far_angle_l_max_id, far_angle_r_max_id;
+//中线
+float far_rpts_c[FAR_POINTS_MAX_LEN][2];
+int far_rpts_c_num = 0;
+//中线归一化
+float far_rpts_c_same[FAR_POINTS_MAX_LEN][2];
+int far_rpts_c_same_num = 0;
+//中线等距采样
+float far_rpts_c_resample[FAR_POINTS_MAX_LEN][2];
+int far_rpts_c_resample_num = 0;
+//单边巡线状态
+track_type_e far_track_type = TRACK_LEFT; // 当前跟踪边线，初始默认跟踪左边
 
 int not_have_line = 0;
 
 //找远线起始点
-int far_y1, far_y2;
-int far_x1 =UVC_WIDTH / 5,far_x2 =UVC_WIDTH - far_x1;
+int far_y1= 0,far_y2 = 0; 
+int far_x1 =UVC_WIDTH / 6,far_x2 =UVC_WIDTH - far_x1;
 /**
  * @brief 十字补线函数（固定数组长度版）
  * @param pts_in 边线点数组
@@ -268,115 +282,202 @@ void run_cross() {
 
 
 
-// void cross_farline(Mat img) 
-// {
-//     int cross_width = 4;//极限边界
-// //    far_x1 = cross_width, far_x2 = img_raw.width -cross_width;
-//     far_y1 = 0, far_y2 = 0;
-//     int x1 = UVC_WIDTH / 2 - begin_x, y1 = begin_y;
-//     uint8_t* ptr = nullptr;
-//     bool white_found = false;
-//     far_ipts_l_num = sizeof(far_ipts_l) / sizeof(far_ipts_l[0]);
-//     //在begin_y向两边找黑线
+void cross_farline(Mat img) 
+{
+    int begin_y = 115;//距离图像底部开始找远线起始点
+    uint8_t* ptr = nullptr;
+    bool white_found = false;
+    far_ipts_l_num = sizeof(far_ipts_l) / sizeof(far_ipts_l[0]);
+    //在begin_y向两边找黑线
 
-//     //全白  far_x1 = 0,从边界找
-//     for (; y1 > 0; y1--) {
-//         //先黑后白，先找white
-//         ptr = (uint8_t*)img.ptr(y1);
-//         if (ptr [far_x1]>= 125) { white_found = true; }
-//         if (ptr [far_x1] < 125 && (white_found || far_x1 == cross_width)) {
-//             far_y1 = y1;
-//             break;
-//         }
-//     }
-//     ptr = (uint8_t*)img.ptr(far_y1+1);
-//     //从找到角点位置开始寻找
-//     if (ptr [far_x1] >= 125)
-//         findline_lefthand_adaptive(img, far_x1, far_y1 +1 ,  far_ipts_l, &far_ipts_l_num);
-//     else far_ipts_l_num = 0;
+    //全白  far_x1 = 0,从边界找
+    for (int y =begin_y; y > 0; y--) {
+        //先白后黑，先找white
+        ptr = (uint8_t*)img.ptr(y);
+        if (ptr [far_x1]>= 125) { white_found = true; }
+        if (ptr [far_x1] < 125 && (white_found )) {
+            far_y1 = y;
+            break;
+        }
+    }
+    ptr = (uint8_t*)img.ptr(far_y1+1);
+    //从找到角点位置开始寻找
+    if (ptr [far_x1] >= 125)
+        findline_lefthand_adaptive(img, far_x1, far_y1 +1 ,  far_ipts_l, &far_ipts_l_num);
+    else far_ipts_l_num = 0;
 
-//     int x2 = UVC_WIDTH / 2 + begin_x, y2 = begin_y;
-//     white_found = false;
-//     far_ipts_r_num = sizeof(far_ipts_r) / sizeof(far_ipts_r[0]);
+    int x2 = UVC_WIDTH / 2 + begin_x, y2 = begin_y;
+    white_found = false;
+    far_ipts_r_num = sizeof(far_ipts_r) / sizeof(far_ipts_r[0]);
 
 
-//     for (; y2 > 0; y2--) {
-//         uint8_t* ptr=img.ptr(y2);
-//         //先黑后白，先找white
-//         if (ptr[far_x2] >= 125) { white_found = true; }
-//         if (ptr[far_x2] < 125 && (white_found || far_x2 == UVC_WIDTH - cross_width)) {
-//             far_y2 = y2;
-//             break;
-//         }
-//     }
+    for (int y = begin_y; y > 0; y--) {
+        uint8_t* ptr=img.ptr(y);
+        //先黑后白，先找white
+        if (ptr[far_x2] >= 125) { white_found = true; }
+        if (ptr[far_x2] < 125 ) {
+            far_y2 = y;
+            break;
+        }
+    }
 
-//     //从找到角点位置开始寻找
-//      ptr=img.ptr(far_y2+1);
-//     if (ptr[far_x2] >= 125)
-//         findline_righthand_adaptive(img,  far_x2, far_y2 + 1, far_ipts_r, &far_ipts_r_num);
-//     else far_ipts_r_num = 0;
-
-
-//     // 去畸变+透视变换
-//     for (int i = 0; i < far_ipts_l_num; i++) {
-//         far_rpts_l[i][0] = mapx[(int) far_ipts_l[i][1]][(int) far_ipts_l[i][0]];
-//         far_rpts_l[i][1] = mapy[(int) far_ipts_l[i][1]][(int) far_ipts_l[i][0]];
-//     }
-//     far_rpts_l_num = far_ipts_l_num;
-//     for (int i = 0; i < far_ipts_r_num; i++) {
-//         far_rpts_r[i][0] = mapx[(int) far_ipts_r[i][1]][(int) far_ipts_r[i][0]];
-//         far_rpts_r[i][1] = mapy[(int) far_ipts_r[i][1]][(int) far_ipts_r[i][0]];
-//     }
+    //从找到角点位置开始寻找
+     ptr=img.ptr(far_y2+1);
+    if (ptr[far_x2] >= 125)
+        findline_righthand_adaptive(img,  far_x2, far_y2 + 1, far_ipts_r, &far_ipts_r_num);
+    else far_ipts_r_num = 0;
 
 
-//     // 边线滤波
-//     blur_points(far_rpts_l, far_rpts_l_num, far_rpts_l_blur, blur_kernel);
-//     blur_points(far_rpts_r, far_rpts_r_num, far_rpts_r_blur, blur_kernel);
+    far_rpts_l_num = 0;
+    far_rpts_r_num = 0;
 
+// ====================================================================
+    // ✨ 远线逆透视（查表极速版）与近线流程对齐
+    // ====================================================================
+    far_rpts_l_num = 0;
+    far_rpts_r_num = 0;
 
-//     // 边线等距采样
-//     far_rpts_l_resample_num = sizeof(far_rpts_l_resample) / sizeof(far_rpts_l_resample[0]);
-//     resample_points(far_rpts_l_blur, far_rpts_l_blur_num, far_rpts_l_resample, &far_rpts_l_resample_num, resample_dist * pixel_per_meter);
-//     far_rpts_r_resample_num = sizeof(far_rpts_r_resample) / sizeof(far_rpts_r_resample[0]);
-//     resample_points(far_rpts_r_blur, far_rpts_r_blur_num, far_rpts_r_resample, &far_rpts_r_resample_num, resample_dist * pixel_per_meter);
-//     // 边线局部角度变化率
-//     local_angle_points(far_rpts_l_resample, far_rpts_l_resample_num, far_angles_l, (int) round(angle_dist / resample_dist));
-//     far_angles_l_num = far_rpts_l_resample_num;
-//     local_angle_points(far_rpts_r_resample, far_rpts_r_resample_num, far_angles_r, (int) round(angle_dist / resample_dist));
-//     far_angles_r_num = far_rpts_r_resample_num;
+    // -------- 1. 左边线查表映射 --------
+    for (int i = 0; i < far_ipts_l_num; i++) 
+    { 
+        // 1. 获取原始图像坐标并取整（确保坐标在 160x120 范围内）
+        int px = (int)(far_ipts_l[i][0] + 0.5f); 
+        int py = (int)(far_ipts_l[i][1] + 0.5f);
 
-//     // 角度变化率非极大抑制
-//     nms_angle(far_angles_l, far_angles_l_num, far_angles_nms_l, (int) round(angle_dist / resample_dist) * 2 + 1);
-//     far_angles_nms_l_num = far_angles_l_num;
-//     max_angle(far_angles_l, far_angles_l_num, &angle_l_max, &angle_l_max_id);
+        // 2. 边界检查，防止索引越界导致程序崩溃
+        if (px >= 0 && px < 160 && py >= 0 && py < 120) 
+        {
+            // 3. 核心步骤：使用 g_ipm_valid 过滤掉无效点
+            if (g_ipm_valid[py][px] && far_rpts_l_num < POINTS_MAX_LEN) 
+            {   
+                // 4. 直接映射到物理坐标
+                far_rpts_l[far_rpts_l_num][0] = g_ipm_lut_u[py][px];  
+                far_rpts_l[far_rpts_l_num][1] = g_ipm_lut_v[py][px];  
+                far_rpts_l_num++;  
+            } 
+        }
+    }
 
-//     nms_angle(far_angles_r, far_angles_r_num, far_angles_nms_r, (int) round(angle_dist / resample_dist) * 2 + 1);
-//     far_angles_nms_r_num = far_angles_r_num;
-//     max_angle(far_angles_r, far_angles_r_num, &angle_r_max, &angle_r_max_id);
+    // -------- 2. 右边线查表映射 --------
+    for (int i = 0; i < far_ipts_r_num; i++) 
+    { 
+        int px = (int)(far_ipts_r[i][0] + 0.5f);
+        int py = (int)(far_ipts_r[i][1] + 0.5f);
 
-//     // 找远线上的L角点
-//     // far_Lpt0_found = far_Lpt1_found = false;
-//     // for (int i = 0; i < MIN(far_rpts_l_resample_num, 80); i++) {
-//     //     if (far_angles_nms_l[i] == 0) continue;
-//     //     int im1 = limit_int(i - (int) round(angle_dist / resample_dist), 0, far_rpts_l_resample_num - 1);
-//     //     int ip1 = limit_int(i + (int) round(angle_dist / resample_dist), 0, far_rpts_l_resample_num - 1);
-//     //     float conf = fabs(far_angles_l[i]) - (fabs(far_angles_l[im1]) + fabs(far_angles_l[ip1])) / 2;
-//     //     if (70. / 180. * PI < conf && conf < 110. / 180. * PI && i < 100) {
-//     //         far_Lpt_l_id = i;
-//     //         far_Lpt0_found = true;
-//     //         break;
-//     //     }
-//     // }
-//     // for (int i = 0; i < MIN(far_rpts_r_resample_num, 80); i++) {
-//     //     if (far_angles_nms_r[i] == 0) continue;
-//     //     int im1 = limit_int(i - (int) round(angle_dist / resample_dist), 0, far_rpts_r_resample_num - 1);
-//     //     int ip1 = limit_int(i + (int) round(angle_dist / resample_dist), 0, far_rpts_r_resample_num - 1);
-//     //     float conf = fabs(far_angles_r[i]) - (fabs(far_angles_r[im1]) + fabs(far_angles_r[ip1])) / 2;
+        if (px >= 0 && px < 160 && py >= 0 && py < 120) 
+        {
+            if (g_ipm_valid[py][px] && far_rpts_r_num < POINTS_MAX_LEN) 
+            {  
+                far_rpts_r[far_rpts_r_num][0] = g_ipm_lut_u[py][px];  
+                far_rpts_r[far_rpts_r_num][1] = g_ipm_lut_v[py][px];  
+                far_rpts_r_num++;  
+            } 
+        }
+    } 
 
-//     //     if (70. / 180. * PI < conf && conf < 110. / 180. * PI && i < 100) {
-//     //         far_Lpt_r_id = i;
-//     //         far_Lpt1_found = true;
-//     //         break;
-//     //     }
-//     // }
-// }
+    // -------- 3. 远线逆透视后左右边线等距采样 (增加点数安全判断) --------
+    far_rpts_l_resample_num = EDGELINE_MAX;  
+    far_rpts_r_resample_num = EDGELINE_MAX;   
+
+    if (far_rpts_l_num > 2) {  
+        blur_points(far_rpts_l, far_rpts_l_num, far_rpts_l_blur, 5);  
+        // 注：此处统一使用近线的 resample_dist。如果远线需要更稀疏的采样，可改回 resample_dist * pixel_per_meter
+        resample_points(far_rpts_l_blur, far_rpts_l_num, far_rpts_l_resample, &far_rpts_l_resample_num, resample_dist);  
+    } else {  
+        far_rpts_l_resample_num = 0;  
+    }  
+
+    if (far_rpts_r_num > 2) {  
+        blur_points(far_rpts_r, far_rpts_r_num, far_rpts_r_blur, 5);  
+        resample_points(far_rpts_r_blur, far_rpts_r_num, far_rpts_r_resample, &far_rpts_r_resample_num, resample_dist);  
+    } else {  
+        far_rpts_r_resample_num = 0;  
+    }  
+
+    // -------- 4. 远线角度变化率 --------
+    // 统一使用固定窗口值 5 对齐近线，简化参数计算
+    local_angle_points(far_rpts_l_resample, far_rpts_l_resample_num, far_angles_l, 5);
+    nms_angle(far_angles_l, far_rpts_l_resample_num, far_angles_nms_l, 5);
+    // 注意：这里的 max 变量名我给你加上了 far_ 前缀，以防和近线的 angle_l_max 冲突
+    max_angle(far_angles_l, 50, &far_angle_l_max, &far_angle_l_max_id);
+
+    local_angle_points(far_rpts_r_resample, far_rpts_r_resample_num, far_angles_r, 5);
+    nms_angle(far_angles_r, far_rpts_r_resample_num, far_angles_nms_r, 5);
+    max_angle(far_angles_r, 50, &far_angle_r_max, &far_angle_r_max_id);
+
+    // 简化后的远端 L 角点寻找逻辑
+    far_Lpt0_found = far_Lpt1_found = false;
+
+    // 定义角点判定的阈值范围
+    const float angle_min_threshold = 50.0f / 180.0f * PI;
+    const float angle_max_threshold = 110.0f / 180.0f * PI;
+
+    // 1. 直接判断左边线最大角点
+    if (far_angle_l_max > angle_min_threshold && 
+        far_angle_l_max < angle_max_threshold && 
+        far_angle_l_max_id < 80) { // 限制在前半段
+        
+        far_Lpt_l_id = far_angle_l_max_id;
+        far_Lpt0_found = true;
+    }
+
+    // 2. 直接判断右边线最大角点
+    if (far_angle_r_max > angle_min_threshold && 
+        far_angle_r_max < angle_max_threshold && 
+        far_angle_r_max_id < 80) {
+        
+        far_Lpt_r_id = far_angle_r_max_id;
+        far_Lpt1_found = true;
+    }
+    // --- 远线截断逻辑：保留角点及以后的点 ---
+
+    // 1. 处理左边线截断
+    if (far_Lpt0_found && far_Lpt_l_id < far_rpts_l_resample_num) {
+        // 计算剩余点数
+        int remaining_num = far_rpts_l_resample_num - far_Lpt_l_id;
+        
+        // 将角点之后的数据移到数组开头
+        for (int i = 0; i < remaining_num; i++) {
+            far_rpts_l_resample[i][0] = far_rpts_l_resample[far_Lpt_l_id + i][0];
+            far_rpts_l_resample[i][1] = far_rpts_l_resample[far_Lpt_l_id + i][1];
+        }
+        far_rpts_l_resample_num = remaining_num;
+    }
+
+    // 2. 处理右边线截断
+    if (far_Lpt1_found && far_Lpt_r_id < far_rpts_r_resample_num) {
+        int remaining_num = far_rpts_r_resample_num - far_Lpt_r_id;
+        
+        for (int i = 0; i < remaining_num; i++) {
+            far_rpts_r_resample[i][0] = far_rpts_r_resample[far_Lpt_r_id + i][0];
+            far_rpts_r_resample[i][1] = far_rpts_r_resample[far_Lpt_r_id + i][1];
+        }
+        far_rpts_r_resample_num = remaining_num;
+    }
+
+    // 3. 远线循迹 (基于截断后的新起始点)
+    if (far_track_type == TRACK_LEFT) {
+        track_leftline(far_rpts_l_resample, far_rpts_l_resample_num,
+                    far_rpts_c, far_rpts_c_num,
+                    angle_dist / resample_dist,
+                    HALF_ROAD_WIDTH ); // 跟踪时保持在车道中心，距离为车道宽度的一半
+    } 
+    else if (far_track_type == TRACK_RIGHT) {
+        track_rightline(far_rpts_r_resample, far_rpts_r_resample_num,
+                        far_rpts_c, far_rpts_c_num,
+                        angle_dist / resample_dist,
+                        HALF_ROAD_WIDTH );
+    }
+
+    // 4. 后续处理：归一化与重采样
+    normalize_midline_with_anchor(far_rpts_c, far_rpts_c_num, far_rpts_c_same, &far_rpts_c_same_num);
+
+    far_rpts_c_resample_num = FAR_POINTS_MAX_LEN; 
+    if (far_rpts_c_same_num > 1) {
+        resample_points(far_rpts_c_same, far_rpts_c_same_num, 
+                        far_rpts_c_resample, &far_rpts_c_resample_num, 
+                        resample_dist);
+    } else {
+        far_rpts_c_resample_num = 0;
+    }
+}

@@ -14,6 +14,45 @@ extern const char *cross_type_name[CROSS_NUM];
 
 extern float begin_x;               // 起始点距离图像中心的左右偏移量
 extern float begin_y;               // 起始点距离图像底部的上下偏移
+
+
+// 原图坐标
+extern float far_ipts_l[FAR_POINTS_MAX_LEN][2];
+extern float far_ipts_r[FAR_POINTS_MAX_LEN][2];
+extern int far_ipts_l_num, far_ipts_r_num;
+
+// 逆透视处理后
+extern float far_rpts_l[FAR_POINTS_MAX_LEN][2];
+extern float far_rpts_r[FAR_POINTS_MAX_LEN][2];
+extern int far_rpts_l_num, far_rpts_r_num;
+
+// 滤波后
+extern float far_rpts_l_blur[FAR_POINTS_MAX_LEN][2];
+extern float far_rpts_r_blur[FAR_POINTS_MAX_LEN][2];
+extern int far_rpts_l_blur_num, far_rpts_r_blur_num;
+
+// 等距采样后
+extern float far_rpts_l_resample[FAR_POINTS_MAX_LEN][2];
+extern float far_rpts_r_resample[FAR_POINTS_MAX_LEN][2];
+extern int far_rpts_l_resample_num, far_rpts_r_resample_num;
+
+// 局部角度变化率
+extern float far_angles_l[FAR_POINTS_MAX_LEN];
+extern float far_angles_r[FAR_POINTS_MAX_LEN];
+extern int far_angles_l_num, far_angles_r_num;
+
+// 非极大抑制后角度
+extern float far_angles_nms_l[FAR_POINTS_MAX_LEN];
+extern float far_angles_nms_r[FAR_POINTS_MAX_LEN];
+extern int far_angles_nms_l_num, far_angles_nms_r_num;
+
+// 边线最大角度
+extern float far_angle_l_max, far_angle_r_max;
+extern int far_angle_l_max_id, far_angle_r_max_id;
+//中线
+extern float far_rpts_c[FAR_POINTS_MAX_LEN][2];
+extern int far_rpts_c_num;
+
 #define PI 3.14
 void check_cross();
 // void run_cross(Mat img,float pts_l[][2],int num_l,float pts_r[][2],int num_r);
