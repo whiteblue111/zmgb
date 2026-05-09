@@ -57,6 +57,6 @@ extern int far_rpts_c_num;
 void check_cross();
 // void run_cross(Mat img,float pts_l[][2],int num_l,float pts_r[][2],int num_r);
 void supplement_line_down(float pts_in[][2], int* num, int corner_index, float dist);
-void run_cross();
+void run_cross(cv::Mat img); // 加上参数
 void cross_farline(Mat img);
 #endif

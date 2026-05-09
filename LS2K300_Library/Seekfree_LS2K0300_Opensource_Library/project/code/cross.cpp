@@ -186,66 +186,94 @@ void check_cross() {
     }  
 }  
   
-void run_cross() {  
-    bool l_ok = (angle_l_max_id >= 0 && angle_l_max_id < rpts_l_resample_num);  
-    bool r_ok = (angle_r_max_id >= 0 && angle_r_max_id < rpts_r_resample_num); 
-    bool L_supplemented = false;
-    bool R_supplemented = false; 
-  
+// 确保这些外部变量在你的项目中已经定义
+// extern float aim_dist; 
+// extern int track_type; 
+// #define TRACK_LEFT 1
+// #define TRACK_RIGHT 2
+
+/**
+ * @brief 十字状态机执行函数
+ * @param img 传入原始图像用于寻远线
+ */
+void run_cross(cv::Mat img) {  
+    // 1. 判断当前帧中是否找到了符合阈值的左右近端L角点
+    bool l_ok = (angle_l_max_id >= 0 && angle_l_max_id < rpts_l_resample_num) && 
+                (angle_l_max > 45.0f / 180.0f * PI);
+    bool r_ok = (angle_r_max_id >= 0 && angle_r_max_id < rpts_r_resample_num) && 
+                (angle_r_max > 45.0f / 180.0f * PI);
+    
+    bool Xfound = l_ok && r_ok;
+    
+    // 获取当前编码器值 (请根据你的龙芯/逐飞库替换具体的获取函数，例如 encoder_get(xxx))
+    // int64_t current_encoder = get_total_encoder(); 
+
+    // ==========================================
+    // CROSS_BEGIN：检测到十字，但还没进入中心
+    // ==========================================
     if (cross_type == CROSS_BEGIN) {  
-        if (l_ok && angle_l_max > 65.0f/180.0f*PI && rpts_l_resample[angle_l_max_id][1] > 60.0f) {  
-            supplement_line(rpts_l_resample, &rpts_l_resample_num, angle_l_max_id, resample_dist);  
-            L_supplemented = true;
-        }  
-        if (r_ok && angle_r_max > 65.0f/180.0f*PI && rpts_r_resample[angle_r_max_id][1] > 60.0f) {  
-            supplement_line(rpts_r_resample, &rpts_r_resample_num, angle_r_max_id, resample_dist); 
-            R_supplemented = true; 
-        }  
-        if (L_supplemented && !R_supplemented) {
-            track_type = TRACK_LEFT;  
-        }
-        else if (!L_supplemented && R_supplemented) {
-            track_type = TRACK_RIGHT;  
-        }
-  
-        // 重新检查（补线后 num 可能改变）  
-        l_ok = (angle_l_max_id >= 0 && angle_l_max_id < rpts_l_resample_num);  
-        r_ok = (angle_r_max_id >= 0 && angle_r_max_id < rpts_r_resample_num);  
-  
-        if (l_ok && r_ok &&  
-            rpts_l_resample[angle_l_max_id][1] < 50.0f &&  
-            rpts_r_resample[angle_r_max_id][1] < 50.0f) {  
-            cross_type = CROSS_IN;  
-        }  
-    }  
-  
-    if (cross_type == CROSS_IN) {  
         
-        if (l_ok) {  
-            int new_l_num = 0;  
-            for (int i = 0; angle_l_max_id + i < rpts_l_resample_num && i < POINTS_MAX_LEN; i++) {  
-                rpts_l_resample[i][0] = rpts_l_resample[angle_l_max_id + i][0];  
-                rpts_l_resample[i][1] = rpts_l_resample[angle_l_max_id + i][1];  
-                new_l_num++;  
-            }  
-            rpts_l_resample_num = new_l_num;  
-        }  
-  
-        if (r_ok) {  
-            int new_r_num = 0;  
-            for (int i = 0; angle_r_max_id + i < rpts_r_resample_num && i < POINTS_MAX_LEN; i++) {  
-                rpts_r_resample[i][0] = rpts_r_resample[angle_r_max_id + i][0];  
-                rpts_r_resample[i][1] = rpts_r_resample[angle_r_max_id + i][1];  
-                new_r_num++;  
-            }  
-            rpts_r_resample_num = new_r_num;  
-        }  
-  
-        if (angle_l_max < 55.0f/180.0f*PI && angle_r_max < 55.0f/180.0f*PI) {  
-            cross_type = CROSS_NONE;  
-        }  
+        // 开源思路：进十字前按照近线走。直接把角点之后的线切断，防止被拐角带偏
+        if (l_ok) {
+            rpts_l_resample_num = angle_l_max_id;
+        }
+        if (r_ok) {
+            rpts_r_resample_num = angle_r_max_id;
+        }
+
+        // 根据你的前瞻控制逻辑设置 aim_dist (可选)
+        // aim_dist = 0.4;
+
+        // 判断角点是否逼近车头，决定是否进入 CROSS_IN
+        // 结合开源代码的思想：索引距离 < (0.1米 / 采样间距)
+        int close_threshold = 10;
+        
+        // 当角点距离车头很近时，切换状态
+        if (Xfound && (angle_l_max_id < close_threshold || angle_r_max_id < close_threshold)) {
+            cross_type = CROSS_IN;
+            
+            // 记录进入十字时的编码器值，可以用于后续超时保护
+            // cross_encoder = current_encoder; 
+            
+            not_have_line = 0; // 重置丢线计数器，为致盲期做准备
+        }
     }  
-}  
+
+    // ==========================================
+    // CROSS_IN：处于十字中心，近线致盲，依靠远线引导
+    // ==========================================
+    else if (cross_type == CROSS_IN) {  
+        
+        // 调用你已经写好的寻远线函数
+        cross_farline(img); 
+
+        // 统计近线点数。如果两边点数都极少，说明此时车在十字正中间的“空白致盲区”
+        if (rpts_l_resample_num < 5 && rpts_r_resample_num < 5) { 
+            not_have_line++; 
+        }
+        
+        // 退出十字条件：致盲期已过（连续多帧没线），且现在两边重新出现了长直近线
+        if (not_have_line > 2 && rpts_l_resample_num > 20 && rpts_r_resample_num > 20) {
+            cross_type = CROSS_NONE;
+            not_have_line = 0;
+        }
+
+        // 状态机核心：在致盲期使用远线的角点来强制决定巡哪边的线 (单边巡线)
+        if (far_Lpt1_found) { 
+            track_type = TRACK_RIGHT;  // 远端发现右角点，说明需要贴右边线过十字
+        }  
+        else if (far_Lpt0_found) { 
+            track_type = TRACK_LEFT;   // 远端发现左角点，说明需要贴左边线过十字
+        }  
+        // // 兜底防丢线逻辑：如果远角点没搜到，但是右边近线丢了，强制贴右
+        // else if (not_have_line > 0 && rpts_r_resample_num < 5) { 
+        //     track_type = TRACK_RIGHT; 
+        // }  
+        // else if (not_have_line > 0 && rpts_l_resample_num < 5) { 
+        //     track_type = TRACK_LEFT; 
+        // }  
+    }  
+}
 
   
 

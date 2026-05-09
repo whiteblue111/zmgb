@@ -145,6 +145,8 @@ ncnn::Net my_net;
 zf_driver_gpio key_1(KEY_1_PATH, O_RDWR);   // 或 O_RDONLY，按你驱动支持  
 zf_driver_gpio key_2(KEY_2_PATH, O_RDWR);
 
+extern Mat bin_mat; // [新增] 声明全局二值化图像变量，供十字状态机使用
+
 
 /* ====================== 全局设备对象 ====================== */    
 zf_driver_tcp_client tcp_client_dev;    
@@ -690,11 +692,11 @@ int main()
         nms_angle(angles_r,rpts_r_resample_num,angles_nms_r,5);
         max_angle(angles_r,rpts_r_resample_num,&angle_r_max,&angle_r_max_id);
 
-        find_corners();
+        // find_corners();
         check_circle();
         run_circle();
-        // check_cross();
-        // run_cross();
+        check_cross();
+        run_cross(bin_mat);
         float follow_offset = HALF_ROAD_WIDTH;  
   
         // //环内/环运行/出环阶段，向内靠 5 像素  
