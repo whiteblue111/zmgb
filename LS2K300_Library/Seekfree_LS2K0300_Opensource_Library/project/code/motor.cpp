@@ -1,6 +1,8 @@
 #include "motor.hpp"  
 #include "pid.hpp"  
 #include "zf_common_headfile.hpp"  
+#include <fstream>
+#include <string>
   
 /* ====================== 设备对象（模块私有） ====================== */  
 static zf_driver_gpio  drv8701e_dir_1(DIR_1_PATH, O_RDWR); // 右  
@@ -17,6 +19,8 @@ static zf_driver_encoder encoder_quad_1(ENCODER_QUAD_1_PATH); // 左
 static zf_driver_encoder encoder_quad_2(ENCODER_QUAD_2_PATH); // 右  
   
 extern volatile uint32_t g_speed_loop_cnt;  
+
+
   
 /* ====================== 全局状态定义 ====================== */  
 motor_param_t motor_l,motor_r;  
@@ -154,6 +158,10 @@ int get_dist ()
  /* ====================== 速度环（增量式，串环，5ms） ====================== */  
  void speed_cascaded_5ms()  
  {  
+    static int dbg_speed_cb_cnt = 0;
+    dbg_speed_cb_cnt++;
+
+
     get_enconder();  
     /* 计算线速度 m/s */  
     float wl  = ((float)motor_l.enc / ENCODER_LINE_NUM) * 2.0f * 3.1415926f / DT_SPEED;  
@@ -167,6 +175,7 @@ int get_dist ()
     duty_r_out += PID_Inc(&pid_speed_r, g_target_speed -g_u_yaw - g_speed_r);  
     int duty_l = duty_l_out = (int)limit_float(duty_l_out , -MAX_PWM, MAX_PWM);  
     int duty_r = duty_r_out = (int)limit_float(duty_r_out , -MAX_PWM, MAX_PWM);  
+    
     motor_set_lr(duty_l, duty_r);  
     // g_speed_loop_cnt++;//统计pid计算时间    
  }  
@@ -217,8 +226,12 @@ void run_speed_loop()
 /*----------------------角度环-------------------------*/  
  void yaw_callback_speed()  
  {  
+    static int dbg_yaw_cb_cnt = 0;
+    dbg_yaw_cb_cnt++;
+    
 
     yaw_10ms();  
+    
  }  
 // ============================ 渐进式死区补偿 ============================  
 /**  

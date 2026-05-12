@@ -1,6 +1,7 @@
 #ifndef CROSS_HPP 
 #define CROSS_HPP
 #include <opencv2/opencv.hpp>
+#include "zf_common_headfile.hpp"
 using namespace cv;
 enum cross_type_e {
     CROSS_NONE = 0,     // 非十字模式
@@ -52,6 +53,18 @@ extern int far_angle_l_max_id, far_angle_r_max_id;
 //中线
 extern float far_rpts_c[FAR_POINTS_MAX_LEN][2];
 extern int far_rpts_c_num;
+//归一化
+extern float far_rpts_c_same[FAR_POINTS_MAX_LEN][2];
+extern int far_rpts_c_same_num;
+//中线等距采样
+extern float far_rpts_c_resample[FAR_POINTS_MAX_LEN][2]; 
+extern int far_rpts_c_resample_num;   
+enum track_type_e : int;              // 前置声明（关键）
+extern track_type_e far_track_type;   // 远线选边结果
+extern track_type_e far_track_type; // 远线选边结果
+
+extern bool far_Lpt_l_found, far_Lpt_r_found;
+extern int far_Lpt_l_id, far_Lpt_r_id;
 
 #define PI 3.14
 void check_cross();

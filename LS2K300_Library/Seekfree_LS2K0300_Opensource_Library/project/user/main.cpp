@@ -132,6 +132,12 @@
 #include <cmath>    
 #include <csignal>    
 #include <cstdlib>    
+#include <fstream>
+#include <sys/time.h>
+#include <execinfo.h>
+#include <unistd.h>
+#include <cstring>
+#include <string>
 using namespace cv;    
    
 /* ====================== 配置项 ====================== */    
@@ -166,14 +172,17 @@ uint16_t* rgb_ptr = nullptr;
 uint16_t* gray_ptr = nullptr;
 
 // ===== 基础参数 =====    
-float aim_dist         = 0.4f;    
-float resample_dist    = 1.0f;    
-float angle_dist       = 2.0f; 
+float aim_dist         = 0.4f;    //没用到
+float resample_dist    = 1.0f;   
+int blur_dist        = 3; 
+int angle_dist       = 5; //计算角度窗口大小
+int nms_kernel       = 2 * angle_dist + 1; // NMS非极大值抑制核大小
+int track_dist       = 2; //单边巡线
 int aim_id = 30;
 
    
 float pixel_per_meter= 100.0f;    
-int   blur_kernel    = 5;    
+  
    
 // ===== 跟踪状态 =====    
 track_type_e track_type = TRACK_LEFT;    
@@ -234,6 +243,9 @@ float ipts_r[EDGELINE_MAX][2] = {0};
 int   ipts_l_num = 0;  
 int   ipts_r_num = 0;  
 
+volatile sig_atomic_t g_dbg_frame_id = 0;
+volatile sig_atomic_t g_dbg_stage_id = 0;
+
 float rpts_l[POINTS_MAX_LEN][2] = {0};  
 float rpts_r[POINTS_MAX_LEN][2] = {0};  
 int   rpts_l_num = 0;  
@@ -257,6 +269,8 @@ float img_err = 0.0f;
 // 控制量（motor.cpp在用）  
 volatile float g_target_speed = 1.0f;  
 volatile float g_u_yaw        = 0.0f;  
+
+
 
    
 /* ====================== TCP包装 ====================== */    
@@ -283,43 +297,7 @@ inline uint16 clamp_coord(float coord, uint16 max_limit) {
     return (uint16)coord;
 }
 
-// -------------------------------------------------------------------------
-// 新增函数：绘制最大角度点的前后计算向量
-// -------------------------------------------------------------------------
-void draw_max_angle_vectors(zf_device_ips200 &ips, float pts_in[][2], int num, int max_id, int dist, uint16 color) 
-{
-    // 点数太少或索引不合法时跳过
-    if (num < 2 || max_id < 0 || max_id >= num) return;
 
-    // 获取前后距离 dist 的参考点（带边界保护）
-    int idx_prev = limit_index(max_id - dist, 0, num - 1);
-    int idx_next = limit_index(max_id + dist, 0, num - 1);
-
-    // 转换坐标并防止越界，这里假设你的图像有效区域是 UVC_WIDTH x UVC_HEIGHT
-    uint16 px = clamp_coord(pts_in[idx_prev][0], UVC_WIDTH);
-    uint16 py = clamp_coord(pts_in[idx_prev][1], UVC_HEIGHT);
-    
-    uint16 cx = clamp_coord(pts_in[max_id][0], UVC_WIDTH);
-    uint16 cy = clamp_coord(pts_in[max_id][1], UVC_HEIGHT);
-    
-    uint16 nx = clamp_coord(pts_in[idx_next][0], UVC_WIDTH);
-    uint16 ny = clamp_coord(pts_in[idx_next][1], UVC_HEIGHT);
-
-    // 用特定颜色画出组成角度的两根向量
-    ips.draw_line(px, py, cx, cy, color);
-    ips.draw_line(cx, cy, nx, ny, color);
-
-    // 在最大角度点(拐点)中心画一个 3x3 的加粗色块，使其更醒目
-    for(int i = -1; i <= 1; i++) {
-        for(int j = -1; j <= 1; j++) {
-            int draw_x = cx + i;
-            int draw_y = cy + j;
-            if (draw_x >= 0 && draw_x < UVC_WIDTH && draw_y >= 0 && draw_y < UVC_HEIGHT) {
-                ips.draw_point(draw_x, draw_y, color);
-            }
-        }
-    }
-}
 //查看帧率  
 void fps_callback()  
 {  
@@ -443,6 +421,56 @@ void cleanup()
     img_timer.stop();    
     motor_stop();       // PWM清零    
 }    
+
+/**
+ * @brief 在终端打印当前调试版本构建信息，确认是否运行了最新二进制。
+ * @return 无，物理单位：无。
+ * @sample terminal_debug_print_build_info();
+ * @note 仅用于启动阶段输出，便于快速判断“旧二进制”问题。
+ */
+void terminal_debug_print_build_info()
+{
+    fprintf(stderr, "[termdbg] build=%s %s file=%s\n", __DATE__, __TIME__, __FILE__);
+}
+
+/**
+ * @brief 安装 SIGSEGV 信号处理器，在段错误时输出终端回溯栈。
+ * @return 安装是否成功（1=成功，0=失败），物理单位：布尔量。
+ * @sample int ok = install_segv_handler();
+ * @note 该函数仅用于调试版本，依赖 Linux 信号机制。
+ */
+int install_segv_handler();
+
+/**
+ * @brief SIGSEGV 回调，打印故障地址与调用栈到终端。
+ * @param sig      信号编号。
+ * @param info     信号扩展信息结构体指针。
+ * @param ucontext 上下文指针（未使用）。
+ * @return 无，物理单位：无。
+ * @note 发生崩溃后会直接 _exit，避免继续执行造成二次破坏。
+ */
+void segv_handler(int sig, siginfo_t* info, void* ucontext)
+{
+    (void)ucontext;
+    void* bt[32];
+    int bt_size = backtrace(bt, 32);
+    fprintf(stderr, "\n[termdbg] ===== SIGSEGV 捕获 =====\n");
+    fprintf(stderr, "[termdbg] signal=%d fault_addr=%p frame_id=%d stage_id=%d\n", sig, info ? info->si_addr : nullptr, (int)g_dbg_frame_id, (int)g_dbg_stage_id);
+    fprintf(stderr, "[termdbg] backtrace begin\n");
+    backtrace_symbols_fd(bt, bt_size, STDERR_FILENO);
+    fprintf(stderr, "[termdbg] backtrace end\n");
+    _exit(128 + sig);
+}
+
+int install_segv_handler()
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = segv_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    return (sigaction(SIGSEGV, &sa, nullptr) == 0) ? 1 : 0;
+}
    
 /* ====================== 主函数 ====================== */    
 int main()    
@@ -461,10 +489,14 @@ int main()
     my_net.load_param("tiny_classifier_fp32.ncnn.param");
     my_net.load_model("tiny_classifier_fp32.ncnn.bin");
     printf("[main] NCNN 模型加载完毕！\n");
+    terminal_debug_print_build_info();
    
     /* ---------- 注册退出处理 ---------- */    
     atexit(cleanup);    
     signal(SIGINT, sigint_handler);    
+    if (!install_segv_handler()) {
+        fprintf(stderr, "[termdbg] 警告：SIGSEGV处理器安装失败\n");
+    }
    
     /* ---------- TCP连接 ---------- */    
     // bool tcp_ok = (tcp_client_dev.init(SERVER_IP, PORT) == 0);    
@@ -504,8 +536,14 @@ int main()
 
     while (1)    
     {    
+        g_dbg_frame_id++;
+        g_dbg_stage_id = 10;
+
+
         uint8_t key1_now = key_1.get_level();  
         uint8_t key2_now = key_2.get_level();
+
+
   
         // 检测“按下沿”：1 -> 0  
         if (key1_last == 1 && key1_now == 0)  
@@ -532,15 +570,87 @@ int main()
 #endif    
    
         // [修改点5] 替换逐飞UVC获取图像的逻辑，使用龙邱驱动获取并翻转
-        if (!camera.get_frame_raw_gray(raw_img, gray_img) || raw_img.empty()) {
+        bool got_frame = camera.get_frame_raw_gray(raw_img, gray_img);
+        
+        if (!got_frame || raw_img.empty()) {
             continue;    
         }
+        g_dbg_stage_id = 20;
+        // #region agent log
+        static int s_dbg_term_frame_cnt = 0;
+        if (s_dbg_term_frame_cnt < 12) {
+            fprintf(stderr, "[termdbg] frame=%d got_frame=1 raw=%dx%d ch=%d gray=%dx%d ch=%d\n",
+                    (int)g_dbg_frame_id, raw_img.cols, raw_img.rows, raw_img.channels(),
+                    gray_img.cols, gray_img.rows, gray_img.channels());
+            s_dbg_term_frame_cnt++;
+        }
+        // #endregion
+        // #region agent log
+        static int s_dbg_main_frame_cnt = 0;
+        if (s_dbg_main_frame_cnt < 8) {
+            struct timeval tv;
+            gettimeofday(&tv, nullptr);
+            const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+            FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+            if (debug_log) {
+                fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H2\",\"location\":\"main.cpp:while:get_frame\",\"message\":\"camera frame acquired\",\"data\":{\"got_frame\":%d,\"raw_rows\":%d,\"raw_cols\":%d,\"raw_ch\":%d,\"gray_rows\":%d,\"gray_cols\":%d,\"gray_ch\":%d},\"timestamp\":%lld}\n", got_frame ? 1 : 0, raw_img.rows, raw_img.cols, raw_img.channels(), gray_img.rows, gray_img.cols, gray_img.channels(), ts_ms);
+                fclose(debug_log);
+            }
+            s_dbg_main_frame_cnt++;
+        }
+        // #endregion
         cv::flip(raw_img, raw_img, -1);
         cv::flip(gray_img, gray_img, -1);
+        // #region agent log
+        static int s_dbg_main_before_vision_cnt = 0;
+        if (s_dbg_main_before_vision_cnt < 8) {
+            struct timeval tv;
+            gettimeofday(&tv, nullptr);
+            const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+            FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+            if (debug_log) {
+                fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H1\",\"location\":\"main.cpp:while:before_vision\",\"message\":\"before process_car_vision\",\"data\":{\"raw_rows\":%d,\"raw_cols\":%d,\"raw_ch\":%d},\"timestamp\":%lld}\n", raw_img.rows, raw_img.cols, raw_img.channels(), ts_ms);
+                fclose(debug_log);
+            }
+            s_dbg_main_before_vision_cnt++;
+        }
+        // #endregion
+        // #region agent log
+        static int s_dbg_term_before_vision_cnt = 0;
+        if (s_dbg_term_before_vision_cnt < 12) {
+            fprintf(stderr, "[termdbg] frame=%d before process_car_vision\n", (int)g_dbg_frame_id);
+            s_dbg_term_before_vision_cnt++;
+        }
+        // #endregion
+        g_dbg_stage_id = 30;
         process_car_vision(raw_img);//模型
+        g_dbg_stage_id = 40;
+        // #region agent log
+        static int s_dbg_term_after_vision_cnt = 0;
+        if (s_dbg_term_after_vision_cnt < 12) {
+            fprintf(stderr, "[termdbg] frame=%d after process_car_vision\n", (int)g_dbg_frame_id);
+            s_dbg_term_after_vision_cnt++;
+        }
+        // #endregion
+        // #region agent log
+        static int s_dbg_main_after_vision_cnt = 0;
+        if (s_dbg_main_after_vision_cnt < 8) {
+            struct timeval tv;
+            gettimeofday(&tv, nullptr);
+            const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+            FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+            if (debug_log) {
+                fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H1\",\"location\":\"main.cpp:while:after_vision\",\"message\":\"after process_car_vision\",\"data\":{\"raw_rows\":%d,\"raw_cols\":%d},\"timestamp\":%lld}\n", raw_img.rows, raw_img.cols, ts_ms);
+                fclose(debug_log);
+            }
+            s_dbg_main_after_vision_cnt++;
+        }
+        // #endregion
+       
         //压缩图像，只处理灰度
         cv::resize(raw_img, raw_img, cv::Size(160, 120), 0, 0, cv::INTER_NEAREST);
         cv::resize(gray_img, gray_img, cv::Size(160, 120), 0, 0,cv::INTER_NEAREST);
+        g_dbg_stage_id = 50;
 
 
         // 传入翻转后的彩色图，识别红砖并更新内部状态机
@@ -558,9 +668,46 @@ int main()
         // --- 转换为逐飞原有的RGB565格式 ---
         cv::cvtColor(raw_img, rgb565_img, cv::COLOR_BGR2BGR565);
         rgb_ptr = (uint16_t*)rgb565_img.data; 
+        g_dbg_stage_id = 60;
+        // #region agent log
+        static int s_dbg_main_cvt_cnt = 0;
+        if (s_dbg_main_cvt_cnt < 8) {
+            struct timeval tv;
+            gettimeofday(&tv, nullptr);
+            const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+            FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+            if (debug_log) {
+                fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H2\",\"location\":\"main.cpp:while:cvtColor\",\"message\":\"rgb565 conversion status\",\"data\":{\"rgb565_rows\":%d,\"rgb565_cols\":%d,\"rgb565_type\":%d,\"rgb_ptr_null\":%d},\"timestamp\":%lld}\n", rgb565_img.rows, rgb565_img.cols, rgb565_img.type(), rgb_ptr == nullptr ? 1 : 0, ts_ms);
+                fclose(debug_log);
+            }
+            s_dbg_main_cvt_cnt++;
+        }
+        // #endregion
 
         /* -------- 3. 直接得到二值图 -------- */    
         image_process(rgb_ptr, (uint8_t*)image_bin[0], UVC_WIDTH, UVC_HEIGHT);   
+        g_dbg_stage_id = 70;
+        // #region agent log
+        static int s_dbg_term_after_imgproc_cnt = 0;
+        if (s_dbg_term_after_imgproc_cnt < 12) {
+            fprintf(stderr, "[termdbg] frame=%d after image_process\n", (int)g_dbg_frame_id);
+            s_dbg_term_after_imgproc_cnt++;
+        }
+        // #endregion
+        // #region agent log
+        static int s_dbg_main_imgproc_cnt = 0;
+        if (s_dbg_main_imgproc_cnt < 8) {
+            struct timeval tv;
+            gettimeofday(&tv, nullptr);
+            const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+            FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+            if (debug_log) {
+                fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H3\",\"location\":\"main.cpp:while:image_process\",\"message\":\"image_process finished\",\"data\":{\"uvc_w\":%d,\"uvc_h\":%d,\"bin00\":%d},\"timestamp\":%lld}\n", UVC_WIDTH, UVC_HEIGHT, (int)image_bin[0][0], ts_ms);
+                fclose(debug_log);
+            }
+            s_dbg_main_imgproc_cnt++;
+        }
+        // #endregion
         memset(left_x, 0, sizeof(left_x));  
         memset(right_x, 0, sizeof(right_x));  
         memset(center_x, 0, sizeof(center_x));  
@@ -580,38 +727,8 @@ int main()
         ipts_r_num = EDGELINE_MAX;      
         findline_lefthand_adaptive (bin_mat, sx_l, sy_l, ipts_l,  &ipts_l_num);    
         findline_righthand_adaptive(bin_mat, sx_r, sy_r, ipts_r,  &ipts_r_num);  
+        g_dbg_stage_id = 80;
         // ====================================================================
-        // ✨ 新增：高度截断逻辑 (裁掉高于图像顶端 10 行的边线点)
-        // ====================================================================
-        int cut_y_threshold = 5; // 设定阈值，10代表屏蔽顶端 0~9 行区域
-
-        // 截断左线
-        int valid_l_num = 0;
-        for (int i = 0; i < ipts_l_num; i++) {
-            // Y坐标大于阈值，说明点在画面下方（有效区）
-            if (ipts_l[i][1] >= cut_y_threshold) { 
-                ipts_l[valid_l_num][0] = ipts_l[i][0];
-                ipts_l[valid_l_num][1] = ipts_l[i][1];
-                valid_l_num++;
-            } else {
-                // 因为巡线是从下往上找的，一旦碰到高于阈值的点，直接打断，后面的点全扔掉
-                break; 
-            }
-        }
-        ipts_l_num = valid_l_num; // 更新真实有效的点数
-
-        // 截断右线
-        int valid_r_num = 0;
-        for (int i = 0; i < ipts_r_num; i++) {
-            if (ipts_r[i][1] >= cut_y_threshold) {
-                ipts_r[valid_r_num][0] = ipts_r[i][0];
-                ipts_r[valid_r_num][1] = ipts_r[i][1];
-                valid_r_num++;
-            } else {
-                break; 
-            }
-        }
-        ipts_r_num = valid_r_num; // 更新真实有效的点数
         // -------- 9.5 边线逆透视（查表极速版） --------  
         rpts_l_num = 0;
         rpts_r_num = 0;
@@ -637,7 +754,7 @@ int main()
             }
         }
 
-        // 右边线处理逻辑同上
+        // 右边线查表映射
         for (int i = 0; i < ipts_r_num; i++) 
         { 
             int px = (int)(ipts_r[i][0] + 0.5f);
@@ -659,18 +776,19 @@ int main()
         rpts_r_resample_num = EDGELINE_MAX;   
   
         if (rpts_l_num > 2) {  
-            blur_points(rpts_l, rpts_l_num, rpts_l_blur, 5);  
+            blur_points(rpts_l, rpts_l_num, rpts_l_blur, blur_dist);  
             resample_points(rpts_l_blur, rpts_l_num, rpts_l_resample, &rpts_l_resample_num, resample_dist);  
         } else {  
             rpts_l_resample_num = 0;  
         }  
   
         if (rpts_r_num > 2) {  
-            blur_points(rpts_r, rpts_r_num, rpts_r_blur, 5);  
+            blur_points(rpts_r, rpts_r_num, rpts_r_blur, blur_dist);  
             resample_points(rpts_r_blur, rpts_r_num, rpts_r_resample, &rpts_r_resample_num, resample_dist);  
         } else {  
             rpts_r_resample_num = 0;  
         }  
+        g_dbg_stage_id = 90;
         // 根据左右等距采样点数选择跟踪边  
         // 可加一个最小差值，避免来回抖动  
         const int switch_margin = 3;  
@@ -684,19 +802,20 @@ int main()
         // 否则保持当前 track_type 不变，防抖  
 
         //角度变化率
-        local_angle_points(rpts_l_resample,rpts_l_resample_num,angles_l,5);
-        nms_angle(angles_l,rpts_l_resample_num,angles_nms_l,5);
+        local_angle_points(rpts_l_resample,rpts_l_resample_num,angles_l,angle_dist);
+        nms_angle(angles_l,rpts_l_resample_num,angles_nms_l,nms_kernel);
         max_angle(angles_l,rpts_l_resample_num,&angle_l_max,&angle_l_max_id);
 
-        local_angle_points(rpts_r_resample,rpts_r_resample_num,angles_r,5);
-        nms_angle(angles_r,rpts_r_resample_num,angles_nms_r,5);
+        local_angle_points(rpts_r_resample,rpts_r_resample_num,angles_r,angle_dist);
+        nms_angle(angles_r,rpts_r_resample_num,angles_nms_r,nms_kernel);
         max_angle(angles_r,rpts_r_resample_num,&angle_r_max,&angle_r_max_id);
+
 
         // find_corners();
         check_circle();
         run_circle();
         check_cross();
-        run_cross(bin_mat);
+        run_cross(bin_mat);;
         float follow_offset = HALF_ROAD_WIDTH;  
   
         // //环内/环运行/出环阶段，向内靠 5 像素  
@@ -763,19 +882,35 @@ int main()
             // g_target_speed = 2.0f; 
         }
 
-        
-        if (track_type == TRACK_LEFT) {  
-            track_leftline(rpts_l_resample, rpts_l_resample_num,  
-                        rpts_c, rpts_c_num,  
-                        angle_dist / resample_dist,  
-                        follow_offset);  
-        }  
-        else if (track_type == TRACK_RIGHT) {  
-            track_rightline(rpts_r_resample, rpts_r_resample_num,  
+        if (cross_type!= CROSS_IN){
+            if (track_type == TRACK_LEFT) {  
+                track_leftline(rpts_l_resample, rpts_l_resample_num,  
                             rpts_c, rpts_c_num,  
-                            angle_dist / resample_dist,  
+                            track_dist,  
                             follow_offset);  
-        }  
+            }  
+            else if (track_type == TRACK_RIGHT) {  
+                track_rightline(rpts_r_resample, rpts_r_resample_num,  
+                                rpts_c, rpts_c_num,  
+                                track_dist,  
+                                follow_offset);  
+            }  
+        }
+        if (cross_type == CROSS_IN) {
+            track_type = far_track_type;
+            if (track_type == TRACK_RIGHT) {
+                track_rightline(far_rpts_r_resample + far_Lpt_r_id, far_rpts_r_resample_num - far_Lpt_r_id,
+                            rpts_c, rpts_c_num,
+                            track_dist,
+                            follow_offset);              
+                        }
+
+            else if (track_type == TRACK_LEFT)
+            track_leftline(far_rpts_l_resample + far_Lpt_l_id, far_rpts_l_resample_num - far_Lpt_l_id,
+                            rpts_c, rpts_c_num,
+                            track_dist,
+                            follow_offset);
+        }
 
         //中线归一化
         normalize_midline_with_anchor(rpts_c,rpts_c_num,rpts_c_same,&rpts_c_same_num);
@@ -799,12 +934,11 @@ int main()
             aim_id = 40;  // 十字看远一点，避免干扰
         }
 
-        //计算图像中线偏差提供差速
+        // 计算图像中线偏差提供差速
         img_err_get();
-        if(cross_type == CROSS_IN || cross_type == CROSS_IN)
+        if(cross_type == CROSS_BEGIN || cross_type == CROSS_IN)
         {
-            limit_float(img_err, -5.0f, 5.0f); // 十字时限制偏差，避免过度纠正
-        
+            img_err = limit_float(img_err, -5.0f, 5.0f); // 十字时限制偏差，避免过度纠正
         }
             // 上半区：原二值图  
         ips200.show_gray_image(  
@@ -818,10 +952,10 @@ int main()
         // ips200.show_uint(30, UVC_HEIGHT + 30, rpts_l_resample_num, 3);  
         // ips200.show_uint(80, UVC_HEIGHT + 30, rpts_r_resample_num, 3);  
          
-        ips200.show_string(4, UVC_HEIGHT + 30, (char*)"block_w:");
-        ips200.show_uint(80, UVC_HEIGHT + 30, block_w, 5);
-        ips200.show_string(4, UVC_HEIGHT + 45, (char*)"block_h:");  
-        ips200.show_float(80, UVC_HEIGHT + 45, block_h, 2, 6);  
+        // ips200.show_string(4, UVC_HEIGHT + 30, (char*)"block_w:");
+        // ips200.show_uint(80, UVC_HEIGHT + 30, block_w, 5);
+        // ips200.show_string(4, UVC_HEIGHT + 45, (char*)"block_h:");  
+        // ips200.show_float(80, UVC_HEIGHT + 45, block_h, 2, 6);  
 
         // ips200.show_string(4, UVC_HEIGHT + 60, (char*)"Circle:");  
         // ips200.show_string(60, UVC_HEIGHT + 60, (char*)"                ");  
@@ -837,6 +971,19 @@ int main()
         ips200.show_float (30,  UVC_HEIGHT + 60, angle_r_max, 3, 3);  
         ips200.show_string(90,  UVC_HEIGHT  + 60, (char*)"idR:");  
         ips200.show_uint  (128, UVC_HEIGHT + 60, (uint32)angle_r_max_id, 3);
+        g_dbg_stage_id = 120;
+        // 远线角点调试显示（替代 block_w / block_h）
+        ips200.show_string(4,   UVC_HEIGHT + 30, (char*)"faL:");
+        ips200.show_float (34,  UVC_HEIGHT + 30, far_angle_l_max, 3, 3);
+        ips200.show_string(90,  UVC_HEIGHT + 30, (char*)"fidL:");
+        ips200.show_uint  (128, UVC_HEIGHT + 30, (uint32)far_angle_l_max_id, 3);
+
+        ips200.show_string(4,   UVC_HEIGHT + 45, (char*)"faR:");
+        ips200.show_float (34,  UVC_HEIGHT + 45, far_angle_r_max, 3, 3);
+        ips200.show_string(90,  UVC_HEIGHT + 45, (char*)"fidR:");
+        ips200.show_uint  (128, UVC_HEIGHT + 45, (uint32)far_angle_r_max_id, 3);
+
+        
 
         
         ips200.show_string(4, UVC_HEIGHT + 90, (char*)"r0x:");  
@@ -919,60 +1066,62 @@ int main()
         ips200.show_string(60, UVC_HEIGHT + 120, (char*)"                ");  
         ips200.show_string(60, UVC_HEIGHT + 120,  
             (char*)((cross_type >= 0 && cross_type < CROSS_NUM) ? cross_type_name[cross_type] : "UNKNOWN"));
-        ips200.show_string(4, UVC_HEIGHT + 150, (char*)"yaw:");  
-        ips200.show_float (40, UVC_HEIGHT + 150, g_angle_yaw, 2, 7);  
-        ips200.show_string(90, UVC_HEIGHT + 165, (char*)"beg:");  
-        ips200.show_float (126,UVC_HEIGHT + 165, angle_begin, 2, 7);  
-        yaw_diff = g_angle_yaw - angle_begin;  
-        ips200.show_string(4, UVC_HEIGHT + 135, (char*)"dyaw:");  
-        ips200.show_float (50, UVC_HEIGHT + 135, yaw_diff, 2, 7);  
+        ips200.show_uint(116, UVC_HEIGHT + 135, (uint32)far_rpts_c_resample_num, 3);
+        // ips200.show_string(4, UVC_HEIGHT + 150, (char*)"yaw:");  
+        // ips200.show_float (40, UVC_HEIGHT + 150, g_angle_yaw, 2, 7);  
+        // ips200.show_string(90, UVC_HEIGHT + 165, (char*)"beg:");  
+        // ips200.show_float (126,UVC_HEIGHT + 165, angle_begin, 2, 7);  
+        // yaw_diff = g_angle_yaw - angle_begin;  
+        // ips200.show_string(4, UVC_HEIGHT + 135, (char*)"dyaw:");  
+        // ips200.show_float (50, UVC_HEIGHT + 135, yaw_diff, 2, 7);  
 
         /*=====================================画线================================================*/
-        for (int i = 0; i < rpts_l_num; i++) {  
-            int x = (int)(rpts_l[i][0] + 0.5f);  
-            int y = (int)(rpts_l[i][1] + 0.5f) ;  
+
+        for (int i = 0; i < rpts_l_resample_num; i++) {  
+            int x = (int)(rpts_l_resample[i][0] + 0.5f);  
+            int y = (int)(rpts_l_resample[i][1] + 0.5f) ;  
             if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_GREEN);  
         }  
-        for (int i = 0; i < rpts_r_num; i++) {  
-            int x = (int)(rpts_r[i][0] + 0.5f);  
-            int y = (int)(rpts_r[i][1] + 0.5f) ;  
+        for (int i = 0; i < rpts_r_resample_num; i++) {  
+            int x = (int)(rpts_r_resample   [i][0] + 0.5f);  
+            int y = (int)(rpts_r_resample[i][1] + 0.5f) ;  
             if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_RED);  
         }  
-        for (int i = 0; i < rpts_c_num; i++) {  
-            int x = (int)(rpts_c[i][0] + 0.5f);  
-            int y = (int)(rpts_c[i][1] + 0.5f) ;  
-            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_YELLOW);  
+        if (rpts_c_resample_num > 0) {
+            for (int i = 0; i < rpts_c_resample_num; i++) {  
+                int x = (int)(rpts_c_resample[i][0] + 0.5f);  
+                int y = (int)(rpts_c_resample[i][1] + 0.5f) ;  
+                if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_YELLOW);  
+            }
         }
-        if (Lpt_l_found && Lpt_l_id >= 0 && Lpt_l_id < rpts_l_resample_num) {  
-            int x = (int)(rpts_l_resample[Lpt_l_id][0] + 0.5f);  
-            int y = (int)(rpts_l_resample[Lpt_l_id][1] + 0.5f);  
-            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y < UVC_HEIGHT) {  
-                ips200.draw_point(x, y, RGB565_WHITE); // 左角点白色  
-            }  
-        }  
-        if (Lpt_r_found && Lpt_r_id >= 0 && Lpt_r_id < rpts_r_resample_num) {  
-            int x = (int)(rpts_r_resample[Lpt_r_id][0] + 0.5f);  
-            int y = (int)(rpts_r_resample[Lpt_r_id][1] + 0.5f);  
-            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y < UVC_HEIGHT) {  
-                ips200.draw_point(x, y, RGB565_BLUE);  // 右角点蓝色  
-            }  
-        }  
+        // if (Lpt_l_found && Lpt_l_id >= 0 && Lpt_l_id < rpts_l_resample_num) {  
+        //     int x = (int)(rpts_l_resample[Lpt_l_id][0] + 0.5f);  
+        //     int y = (int)(rpts_l_resample[Lpt_l_id][1] + 0.5f);  
+        //     if (x >= 0 && x < UVC_WIDTH && y >= 0 && y < UVC_HEIGHT) {  
+        //         ips200.draw_point(x, y, RGB565_WHITE); // 左角点白色  
+        //     }  
+        // }  
+        // if (Lpt_r_found && Lpt_r_id >= 0 && Lpt_r_id < rpts_r_resample_num) {  
+        //     int x = (int)(rpts_r_resample[Lpt_r_id][0] + 0.5f);  
+        //     int y = (int)(rpts_r_resample[Lpt_r_id][1] + 0.5f);  
+        //     if (x >= 0 && x < UVC_WIDTH && y >= 0 && y < UVC_HEIGHT) {  
+        //         ips200.draw_point(x, y, RGB565_BLUE);  // 右角点蓝色  
+        //     }  
+        // }     
         /*===============================画远线=============================*/
-        for (int i = 0; i < far_rpts_l_num; i++) {  
-            int x = (int)(far_rpts_l[i][0] + 0.5f);  
-            int y = (int)(far_rpts_l[i][1] + 0.5f) ;  
-            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_GREEN);  
+
+        for (int i = 0; i < far_rpts_l_resample_num; i++) {  
+            int x = (int)(far_rpts_l_resample[i][0] + 0.5f);  
+            int y = (int)(far_rpts_l_resample[i][1] + 0.5f) ;  
+            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_PURPLE);  
         }  
-        for (int i = 0; i < far_rpts_r_num; i++) {  
-            int x = (int)(far_rpts_r[i][0] + 0.5f);  
-            int y = (int)(far_rpts_r[i][1] + 0.5f) ;  
-            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_RED);  
+        for (int i = 0; i < far_rpts_r_resample_num; i++) {  
+            int x = (int)(far_rpts_r_resample[i][0] + 0.5f);  
+            int y = (int)(far_rpts_r_resample[i][1] + 0.5f) ;  
+            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_BROWN);  
         }  
-        for (int i = 0; i < far_rpts_c_num; i++) {  
-            int x = (int)(far_rpts_c[i][0] + 0.5f);  
-            int y = (int)(far_rpts_c[i][1] + 0.5f) ;  
-            if (x >= 0 && x < UVC_WIDTH && y >= 0 && y <  UVC_HEIGHT) ips200.draw_point(x, y, RGB565_YELLOW);  
-        }
+
+
 
 
         /* -------- 14. 逐飞助手发送数据 -------- */    
@@ -989,6 +1138,13 @@ int main()
             seekfree_assistant_oscilloscope_data.data[4] = g_speed_r;    
             seekfree_assistant_oscilloscope_send(&seekfree_assistant_oscilloscope_data);    
         }    
+        g_dbg_stage_id = 140;
+        // #region agent log
+        if ((g_dbg_frame_id % 200) == 0) {
+            fprintf(stderr, "[termdbg] heartbeat frame=%d stage=%d iptsL=%d iptsR=%d rptsL=%d rptsR=%d\n",
+                    (int)g_dbg_frame_id, (int)g_dbg_stage_id, ipts_l_num, ipts_r_num, rpts_l_num, rpts_r_num);
+        }
+        // #endregion
         
       
     }    

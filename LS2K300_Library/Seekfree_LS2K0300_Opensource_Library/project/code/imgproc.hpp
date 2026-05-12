@@ -1,9 +1,11 @@
 #ifndef IMGPROC_HPP  
 #define IMGPROC_HPP  
-  
+ 
+#include "zf_common_headfile.hpp"
 #include <vector>  
 #include <opencv2/opencv.hpp>  
 using namespace cv;
+
   
 #define EDGELINE_MAX   (200)
 #define POINTS_MAX_LEN (200)
@@ -44,10 +46,11 @@ void img_err_get();
 bool calc_weighted_center_point(float Mline[][2], int num, float *out_x, float *out_y)  ;
 void find_corners();
 extern float aim_dist;          // 预锚点距离
+extern int blur_dist;
 extern float resample_dist;           //等距采样距离
-extern float angle_dist;            //角度变化率采样距离
+extern int angle_dist;            //角度变化率采样距离
 extern int aim_id;                   //预瞄点编号
-enum track_type_e {
+enum track_type_e : int {
     TRACK_LEFT,
     TRACK_RIGHT,
 };

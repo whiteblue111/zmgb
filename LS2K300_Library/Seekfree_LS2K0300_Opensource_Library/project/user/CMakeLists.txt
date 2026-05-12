@@ -15,11 +15,20 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+option(ENABLE_TERMINAL_DEBUG "Enable terminal crash debug symbols/flags" ON)
+
 # 通用编译优化与龙芯架构参数
 set(COMMON_FLAGS "-O3 -march=loongarch64 -mtune=loongarch64 -fPIC -ffunction-sections -fdata-sections -Wall")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_FLAGS} -pthread -Wno-delete-non-virtual-dtor -Wno-placement-new")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_FLAGS}")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
+
+if (ENABLE_TERMINAL_DEBUG)
+    message(STATUS "ENABLE_TERMINAL_DEBUG=ON -> add -g -O0 -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0 -fno-omit-frame-pointer")
+    add_compile_definitions(ENABLE_TERMINAL_DEBUG=1)
+endif()
 
 # OpenCV依赖配置
 set(CMAKE_PREFIX_PATH "/opt/ls_2k0300_env/opencv_4_10_build") 

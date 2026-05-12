@@ -2,6 +2,7 @@
 #include "zf_common_headfile.hpp"  
 #include <cmath>  
 #include <cstdint>
+#include <csignal>
 #include <opencv2/opencv.hpp>
 using namespace cv;
 enum cross_type_e cross_type = CROSS_NONE;
@@ -14,8 +15,10 @@ const char *cross_type_name[CROSS_NUM] = {
 // 编码器值，用于防止一些重复触发等。
 int64_t cross_encoder;
 
-bool far_Lpt0_found, far_Lpt1_found;
+bool far_Lpt_l_found, far_Lpt_r_found;
 int far_Lpt_l_id, far_Lpt_r_id;
+extern volatile sig_atomic_t g_dbg_stage_id;
+extern volatile sig_atomic_t g_dbg_frame_id;
 
 extern float mapx[120][160];
 extern float mapy[120][160];
@@ -64,7 +67,7 @@ track_type_e far_track_type = TRACK_LEFT; // 当前跟踪边线，初始默认�
 int not_have_line = 0;
 
 //找远线起始点
-int far_y1= 0,far_y2 = 0; 
+int far_y1,far_y2 ; 
 int far_x1 =UVC_WIDTH / 6,far_x2 =UVC_WIDTH - far_x1;
 /**
  * @brief 十字补线函数（固定数组长度版）
@@ -169,16 +172,15 @@ void check_cross() {
     bool l_ok = (angle_l_max_id >= 0 && angle_l_max_id < rpts_l_resample_num);  
     bool r_ok = (angle_r_max_id >= 0 && angle_r_max_id < rpts_r_resample_num);  
     if (!l_ok || !r_ok) return;  
-  
-    bool Xfound = (angle_l_max > 65.0f/180.0f*PI) &&  
-                  (angle_r_max > 65.0f/180.0f*PI) &&  
+    //找到两角点且合理
+    bool Xfound = (angle_l_max > 45.0f/180.0f*PI) &&  
+                  (angle_r_max > 45.0f/180.0f*PI) &&  
                   (rpts_l_resample[angle_l_max_id][1] > 60.0f) &&  
                   (rpts_r_resample[angle_r_max_id][1] > 60.0f);  
-  
+    //距离判据
     float dx = rpts_l_resample[angle_l_max_id][0] - rpts_r_resample[angle_r_max_id][0];  
     float dy = rpts_l_resample[angle_l_max_id][1] - rpts_r_resample[angle_r_max_id][1];  
     float corner_dist = sqrtf(dx * dx + dy * dy);  
-  
     bool dist_right = (corner_dist > ROAD_WIDTH - 10.0f) && (corner_dist < ROAD_WIDTH + 10.0f);  
   
     if (cross_type == CROSS_NONE && Xfound && dist_right) {  
@@ -193,8 +195,10 @@ void check_cross() {
 // #define TRACK_RIGHT 2
 
 /**
- * @brief 十字状态机执行函数
+ * @brief 十字状态机执行函数（含入十字截断与十字内远线决策）
  * @param img 传入原始图像用于寻远线
+ * @return 无返回值
+ * @note 在 CROSS_IN 状态下，track_type 与 far_track_type 保持一致，确保控制链使用远线决策
  */
 void run_cross(cv::Mat img) {  
     // 1. 判断当前帧中是否找到了符合阈值的左右近端L角点
@@ -212,22 +216,12 @@ void run_cross(cv::Mat img) {
     // CROSS_BEGIN：检测到十字，但还没进入中心
     // ==========================================
     if (cross_type == CROSS_BEGIN) {  
+        //先判断角点在截断，然后根据是否截断来巡线或许会好
+        rpts_l_resample_num = angle_l_max_id;
+        rpts_r_resample_num = angle_r_max_id;
         
-        // 开源思路：进十字前按照近线走。直接把角点之后的线切断，防止被拐角带偏
-        if (l_ok) {
-            rpts_l_resample_num = angle_l_max_id;
-        }
-        if (r_ok) {
-            rpts_r_resample_num = angle_r_max_id;
-        }
-
-        // 根据你的前瞻控制逻辑设置 aim_dist (可选)
-        // aim_dist = 0.4;
-
         // 判断角点是否逼近车头，决定是否进入 CROSS_IN
-        // 结合开源代码的思想：索引距离 < (0.1米 / 采样间距)
         int close_threshold = 10;
-        
         // 当角点距离车头很近时，切换状态
         if (Xfound && (angle_l_max_id < close_threshold || angle_r_max_id < close_threshold)) {
             cross_type = CROSS_IN;
@@ -246,25 +240,8 @@ void run_cross(cv::Mat img) {
         
         // 调用你已经写好的寻远线函数
         cross_farline(img); 
-
-        // 统计近线点数。如果两边点数都极少，说明此时车在十字正中间的“空白致盲区”
-        if (rpts_l_resample_num < 5 && rpts_r_resample_num < 5) { 
-            not_have_line++; 
-        }
-        
-        // 退出十字条件：致盲期已过（连续多帧没线），且现在两边重新出现了长直近线
-        if (not_have_line > 2 && rpts_l_resample_num > 20 && rpts_r_resample_num > 20) {
-            cross_type = CROSS_NONE;
-            not_have_line = 0;
-        }
-
-        // 状态机核心：在致盲期使用远线的角点来强制决定巡哪边的线 (单边巡线)
-        if (far_Lpt1_found) { 
-            track_type = TRACK_RIGHT;  // 远端发现右角点，说明需要贴右边线过十字
-        }  
-        else if (far_Lpt0_found) { 
-            track_type = TRACK_LEFT;   // 远端发现左角点，说明需要贴左边线过十字
-        }  
+        // 状态机核心：CROSS_IN 仅使用远线选边结果
+        track_type = far_track_type;
         // // 兜底防丢线逻辑：如果远角点没搜到，但是右边近线丢了，强制贴右
         // else if (not_have_line > 0 && rpts_r_resample_num < 5) { 
         //     track_type = TRACK_RIGHT; 
@@ -272,7 +249,68 @@ void run_cross(cv::Mat img) {
         // else if (not_have_line > 0 && rpts_l_resample_num < 5) { 
         //     track_type = TRACK_LEFT; 
         // }  
+
+        // 统计近线点数。如果两边点数都极少，说明此时车在十字正中间的“空白致盲区”
+        if (rpts_l_resample_num < 5 && rpts_r_resample_num < 5) { 
+            not_have_line++; 
+        }
+        
+        // 退出十字条件：致盲期已过（连续多帧没线），且现在两边重新出现了长近线
+        if (not_have_line > 3 && rpts_l_resample_num > 20 && rpts_r_resample_num > 20) {
+            cross_type = CROSS_NONE;
+            not_have_line = 0;
+        }
     }  
+}
+
+/**
+ * @brief 在远线 NMS 角度序列中筛选满足阈值的局部峰值角点
+ * @param angles_raw     原始角度序列（弧度）
+ * @param angles_nms     NMS 后角度序列（弧度）
+ * @param num            角度序列有效长度（点）
+ * @param max_scan       最大扫描点数上限（点）
+ * @param idx_limit      角点索引上限（点）
+ * @param conf_min       conf 最小阈值（弧度）
+ * @param conf_max       conf 最大阈值（弧度）
+ * @param corner_id_out  输出角点索引（点）
+ * @return 是否找到有效角点（true=找到，false=未找到）
+ * @note conf 使用原始角度邻域差：|a[i]| - (|a[i-1]|+|a[i+1]|)/2，仅在 NMS 非零候选中比较并取最大 conf
+ */
+static bool select_far_corner_from_nms(const float angles_raw[],
+                                       const float angles_nms[],
+                                       int num,
+                                       int max_scan,
+                                       int idx_limit,
+                                       float conf_min,
+                                       float conf_max,
+                                       int *corner_id_out) {
+    if (angles_raw == nullptr || angles_nms == nullptr || corner_id_out == nullptr || num <= 0) {
+        return false;
+    }
+
+    const int scan_num = (num < max_scan) ? num : max_scan;
+    int best_id = -1;
+    float best_conf = -1.0f;
+
+    for (int i = 0; i < scan_num; ++i) {
+        if (i >= idx_limit) break;
+        if (fabsf(angles_nms[i]) < 1e-4f) continue;
+
+        const int im1 = (i > 0) ? (i - 1) : i;
+        const int ip1 = (i + 1 < num) ? (i + 1) : i;
+        const float conf = fabsf(angles_raw[i]) - (fabsf(angles_raw[im1]) + fabsf(angles_raw[ip1])) / 2.0f;
+
+        if (conf >= conf_min && conf <= conf_max && conf > best_conf) {
+            best_conf = conf;
+            best_id = i;
+        }
+    }
+
+    if (best_id >= 0) {
+        *corner_id_out = best_id;
+        return true;
+    }
+    return false;
 }
 
   
@@ -310,8 +348,15 @@ void run_cross(cv::Mat img) {
 
 
 
+/**
+ * @brief 十字远线提取与远线中线构建
+ * @param img 传入二值图像（320x240 坐标系下裁剪后处理）
+ * @return 无返回值
+ * @note 函数内部会更新 far_track_type，并输出 far_rpts_c_resample 供 CROSS_IN 阶段控制使用
+ */
 void cross_farline(Mat img) 
 {
+    g_dbg_stage_id = 102;
     int begin_y = 115;//距离图像底部开始找远线起始点
     uint8_t* ptr = nullptr;
     bool white_found = false;
@@ -341,9 +386,9 @@ void cross_farline(Mat img)
 
     for (int y = begin_y; y > 0; y--) {
         uint8_t* ptr=img.ptr(y);
-        //先黑后白，先找white
+        //先白后黑，先找white
         if (ptr[far_x2] >= 125) { white_found = true; }
-        if (ptr[far_x2] < 125 ) {
+        if (ptr[far_x2] < 125 && (white_found)) {
             far_y2 = y;
             break;
         }
@@ -376,12 +421,21 @@ void cross_farline(Mat img)
         if (px >= 0 && px < 160 && py >= 0 && py < 120) 
         {
             // 3. 核心步骤：使用 g_ipm_valid 过滤掉无效点
-            if (g_ipm_valid[py][px] && far_rpts_l_num < POINTS_MAX_LEN) 
+            if (g_ipm_valid[py][px] && far_rpts_l_num < FAR_POINTS_MAX_LEN) 
             {   
                 // 4. 直接映射到物理坐标
                 far_rpts_l[far_rpts_l_num][0] = g_ipm_lut_u[py][px];  
                 far_rpts_l[far_rpts_l_num][1] = g_ipm_lut_v[py][px];  
                 far_rpts_l_num++;  
+            } else if (g_ipm_valid[py][px] && far_rpts_l_num >= FAR_POINTS_MAX_LEN) {
+                // #region agent log
+                static int s_dbg_far_left_overflow_cnt = 0;
+                if (s_dbg_far_left_overflow_cnt < 12) {
+                    fprintf(stderr, "[termdbg] cross_farline left truncated frame=%d py=%d px=%d far_rpts_l_num=%d cap=%d\n",
+                            (int)g_dbg_frame_id, py, px, far_rpts_l_num, FAR_POINTS_MAX_LEN);
+                    s_dbg_far_left_overflow_cnt++;
+                }
+                // #endregion
             } 
         }
     }
@@ -394,21 +448,31 @@ void cross_farline(Mat img)
 
         if (px >= 0 && px < 160 && py >= 0 && py < 120) 
         {
-            if (g_ipm_valid[py][px] && far_rpts_r_num < POINTS_MAX_LEN) 
+            if (g_ipm_valid[py][px] && far_rpts_r_num < FAR_POINTS_MAX_LEN) 
             {  
                 far_rpts_r[far_rpts_r_num][0] = g_ipm_lut_u[py][px];  
                 far_rpts_r[far_rpts_r_num][1] = g_ipm_lut_v[py][px];  
                 far_rpts_r_num++;  
+            } else if (g_ipm_valid[py][px] && far_rpts_r_num >= FAR_POINTS_MAX_LEN) {
+                // #region agent log
+                static int s_dbg_far_right_overflow_cnt = 0;
+                if (s_dbg_far_right_overflow_cnt < 12) {
+                    fprintf(stderr, "[termdbg] cross_farline right truncated frame=%d py=%d px=%d far_rpts_r_num=%d cap=%d\n",
+                            (int)g_dbg_frame_id, py, px, far_rpts_r_num, FAR_POINTS_MAX_LEN);
+                    s_dbg_far_right_overflow_cnt++;
+                }
+                // #endregion
             } 
         }
     } 
+    g_dbg_stage_id = 103;
 
     // -------- 3. 远线逆透视后左右边线等距采样 (增加点数安全判断) --------
-    far_rpts_l_resample_num = EDGELINE_MAX;  
-    far_rpts_r_resample_num = EDGELINE_MAX;   
+    far_rpts_l_resample_num = FAR_POINTS_MAX_LEN;  
+    far_rpts_r_resample_num = FAR_POINTS_MAX_LEN;   
 
     if (far_rpts_l_num > 2) {  
-        blur_points(far_rpts_l, far_rpts_l_num, far_rpts_l_blur, 5);  
+        blur_points(far_rpts_l, far_rpts_l_num, far_rpts_l_blur, blur_dist);  
         // 注：此处统一使用近线的 resample_dist。如果远线需要更稀疏的采样，可改回 resample_dist * pixel_per_meter
         resample_points(far_rpts_l_blur, far_rpts_l_num, far_rpts_l_resample, &far_rpts_l_resample_num, resample_dist);  
     } else {  
@@ -416,96 +480,50 @@ void cross_farline(Mat img)
     }  
 
     if (far_rpts_r_num > 2) {  
-        blur_points(far_rpts_r, far_rpts_r_num, far_rpts_r_blur, 5);  
+        blur_points(far_rpts_r, far_rpts_r_num, far_rpts_r_blur, blur_dist);  
         resample_points(far_rpts_r_blur, far_rpts_r_num, far_rpts_r_resample, &far_rpts_r_resample_num, resample_dist);  
     } else {  
         far_rpts_r_resample_num = 0;  
     }  
+    g_dbg_stage_id = 104;
 
     // -------- 4. 远线角度变化率 --------
     // 统一使用固定窗口值 5 对齐近线，简化参数计算
-    local_angle_points(far_rpts_l_resample, far_rpts_l_resample_num, far_angles_l, 5);
+    local_angle_points(far_rpts_l_resample, far_rpts_l_resample_num, far_angles_l, angle_dist);
     nms_angle(far_angles_l, far_rpts_l_resample_num, far_angles_nms_l, 5);
     // 注意：这里的 max 变量名我给你加上了 far_ 前缀，以防和近线的 angle_l_max 冲突
     max_angle(far_angles_l, 50, &far_angle_l_max, &far_angle_l_max_id);
 
-    local_angle_points(far_rpts_r_resample, far_rpts_r_resample_num, far_angles_r, 5);
+    local_angle_points(far_rpts_r_resample, far_rpts_r_resample_num, far_angles_r, angle_dist);
     nms_angle(far_angles_r, far_rpts_r_resample_num, far_angles_nms_r, 5);
     max_angle(far_angles_r, 50, &far_angle_r_max, &far_angle_r_max_id);
+    g_dbg_stage_id = 105;
 
-    // 简化后的远端 L 角点寻找逻辑
-    far_Lpt0_found = far_Lpt1_found = false;
+    // 简化后的远端 L 角点寻找逻辑（NMS 局部峰值 + conf 过滤）
+    far_Lpt_l_found = far_Lpt_r_found = false;
+    far_Lpt_l_id = -1;
+    far_Lpt_r_id = -1;
 
-    // 定义角点判定的阈值范围
-    const float angle_min_threshold = 50.0f / 180.0f * PI;
+    // NMS conf 阈值范围（70°~110°），回退角度阈值沿用原逻辑
+    const float angle_min_threshold = 45.0f / 180.0f * PI;
     const float angle_max_threshold = 110.0f / 180.0f * PI;
+    const float conf_min_threshold = 40.0f / 180.0f * PI;
+    const float conf_max_threshold = 110.0f / 180.0f * PI;
+    const int max_scan = 50;
+    const int idx_limit = 50;
 
-    // 1. 直接判断左边线最大角点
-    if (far_angle_l_max > angle_min_threshold && 
-        far_angle_l_max < angle_max_threshold && 
-        far_angle_l_max_id < 80) { // 限制在前半段
-        
-        far_Lpt_l_id = far_angle_l_max_id;
-        far_Lpt0_found = true;
-    }
+    // 1) 优先使用 NMS 局部峰值筛选左远线角点
+    far_Lpt_l_found = select_far_corner_from_nms(
+        far_angles_l, far_angles_nms_l, far_rpts_l_resample_num,
+        max_scan, idx_limit,
+        conf_min_threshold, conf_max_threshold,
+        &far_Lpt_l_id);
 
-    // 2. 直接判断右边线最大角点
-    if (far_angle_r_max > angle_min_threshold && 
-        far_angle_r_max < angle_max_threshold && 
-        far_angle_r_max_id < 80) {
-        
-        far_Lpt_r_id = far_angle_r_max_id;
-        far_Lpt1_found = true;
-    }
-    // --- 远线截断逻辑：保留角点及以后的点 ---
 
-    // 1. 处理左边线截断
-    if (far_Lpt0_found && far_Lpt_l_id < far_rpts_l_resample_num) {
-        // 计算剩余点数
-        int remaining_num = far_rpts_l_resample_num - far_Lpt_l_id;
-        
-        // 将角点之后的数据移到数组开头
-        for (int i = 0; i < remaining_num; i++) {
-            far_rpts_l_resample[i][0] = far_rpts_l_resample[far_Lpt_l_id + i][0];
-            far_rpts_l_resample[i][1] = far_rpts_l_resample[far_Lpt_l_id + i][1];
-        }
-        far_rpts_l_resample_num = remaining_num;
-    }
-
-    // 2. 处理右边线截断
-    if (far_Lpt1_found && far_Lpt_r_id < far_rpts_r_resample_num) {
-        int remaining_num = far_rpts_r_resample_num - far_Lpt_r_id;
-        
-        for (int i = 0; i < remaining_num; i++) {
-            far_rpts_r_resample[i][0] = far_rpts_r_resample[far_Lpt_r_id + i][0];
-            far_rpts_r_resample[i][1] = far_rpts_r_resample[far_Lpt_r_id + i][1];
-        }
-        far_rpts_r_resample_num = remaining_num;
-    }
-
-    // 3. 远线循迹 (基于截断后的新起始点)
-    if (far_track_type == TRACK_LEFT) {
-        track_leftline(far_rpts_l_resample, far_rpts_l_resample_num,
-                    far_rpts_c, far_rpts_c_num,
-                    angle_dist / resample_dist,
-                    HALF_ROAD_WIDTH ); // 跟踪时保持在车道中心，距离为车道宽度的一半
-    } 
-    else if (far_track_type == TRACK_RIGHT) {
-        track_rightline(far_rpts_r_resample, far_rpts_r_resample_num,
-                        far_rpts_c, far_rpts_c_num,
-                        angle_dist / resample_dist,
-                        HALF_ROAD_WIDTH );
-    }
-
-    // 4. 后续处理：归一化与重采样
-    normalize_midline_with_anchor(far_rpts_c, far_rpts_c_num, far_rpts_c_same, &far_rpts_c_same_num);
-
-    far_rpts_c_resample_num = FAR_POINTS_MAX_LEN; 
-    if (far_rpts_c_same_num > 1) {
-        resample_points(far_rpts_c_same, far_rpts_c_same_num, 
-                        far_rpts_c_resample, &far_rpts_c_resample_num, 
-                        resample_dist);
-    } else {
-        far_rpts_c_resample_num = 0;
-    }
+    // 2) 优先使用 NMS 局部峰值筛选右远线角点
+    far_Lpt_r_found = select_far_corner_from_nms(
+        far_angles_r, far_angles_nms_r, far_rpts_r_resample_num,
+        max_scan, idx_limit,
+        conf_min_threshold, conf_max_threshold,
+        &far_Lpt_r_id);
 }

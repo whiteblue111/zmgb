@@ -35,7 +35,15 @@ const int dir_frontright[4][2] = {{1,  -1},
                                 {1,  1},
                                 {-1, 1},
                                 {-1, -1}};
- // 左手迷宫巡线
+/**
+ * @brief 左手自适应迷宫巡线算法
+ * 
+ * @param img 输入的二值化图像
+ * @param x   起始搜索点 x 坐标
+ * @param y   起始搜索点 y 坐标
+ * @param pts 输出的巡线点集数组
+ * @param num 传入期望寻找的最大点数，传出实际找到的点数
+ */
 void findline_lefthand_adaptive(Mat img, int x, int y, float pts[][2], int *num) 
 {
     uint8_t *ptr;
@@ -75,7 +83,15 @@ void findline_lefthand_adaptive(Mat img, int x, int y, float pts[][2], int *num)
     *num = step;
 }
 
-// 右手迷宫巡线
+/**
+ * @brief 右手自适应迷宫巡线算法
+ * 
+ * @param img 输入的二值化图像
+ * @param x   起始搜索点 x 坐标
+ * @param y   起始搜索点 y 坐标
+ * @param pts 输出的巡线点集数组
+ * @param num 传入期望寻找的最大点数，传出实际找到的点数
+ */
 void findline_righthand_adaptive(Mat img, int x, int y, float pts[][2], int *num)  
 {  
     CV_Assert(!img.empty() && img.type() == CV_8UC1);  
@@ -339,11 +355,14 @@ void find_right_base(Mat img, int *x, int *y)
     // 3) 还没找到就兜底  
     *x = img.cols - 2;  
 }  
-
-
-
-
-// 点集三角滤波
+/**
+ * @brief 对点集进行三角滤波平滑处理
+ * 
+ * @param pts_in  原始输入点集
+ * @param num     点集数量
+ * @param pts_out 滤波后输出点集
+ * @param kernel  滤波核大小（必须为奇数）
+ */
 void blur_points(float pts_in[][2], int num, float pts_out[][2], int kernel) 
 {
     assert(kernel % 2 == 1);
@@ -359,7 +378,14 @@ void blur_points(float pts_in[][2], int num, float pts_out[][2], int kernel)
         pts_out[i][1] /= (2 * half + 2) * (half + 1) / 2;
     }
 }
-// 点集等距采样  使走过的采样前折线段的距离为`dist`
+/**
+ * @brief 点集等距采样
+ * @param pts_in  原始输入点集
+ * @param num1    输入点集数量
+ * @param pts_out 滤波后输出点集
+ * @param num2    传入期望采样的点数，传出实际采样的点数
+ * @param dist    采样距离
+ */
 void resample_points(float pts_in[][2], int num1, float pts_out[][2], int *num2, float dist)
 {
     float remain = 0.f;
@@ -391,7 +417,15 @@ void resample_points(float pts_in[][2], int num1, float pts_out[][2], int *num2,
     }
     *num2 = len;
 }
-// 左边线推中线：中线在“左边线的右侧” dist  
+/**
+ * @brief 左边线推中线：中线在“左边线的右侧” dist
+ * @param pts_in  原始输入点集
+ * @param num_in  输入点集数量
+ * @param pts_out 输出点集
+ * @param num_out 传出实际找到的点数
+ * @param approx_num 计算局部法向量的点数窗口
+ * @param dist 平移距离，正常情况是赛道半宽
+ */
 void track_leftline(float pts_in[][2], int num_in, float pts_out[][2],int& num_out, int approx_num, float dist)  
 {   
     num_out = 0;
@@ -422,8 +456,16 @@ void track_leftline(float pts_in[][2], int num_in, float pts_out[][2],int& num_o
     } 
     num_out = num_in; 
 }  
-  
-// 右边线推中线：中线在“右边线的左侧” dist  
+/**
+ * @brief 利用右边线沿左法向推导生成中线
+ * 
+ * @param pts_in     右边线输入点集
+ * @param num_in     右边线点数
+ * @param pts_out    推导出的中线输出点集
+ * @param num_out    中线点数（与输入点数一致）
+ * @param approx_num 计算局部法向时跨越的点数窗口
+ * @param dist       向左推导的距离（通常为半车道宽）
+ */
 void track_rightline(float pts_in[][2], int num_in, float pts_out[][2], int& num_out, int approx_num, float dist)  
 {  
     num_out = 0;  
@@ -455,16 +497,18 @@ void track_rightline(float pts_in[][2], int num_in, float pts_out[][2], int& num
     num_out = num_in;  
 }  
 
-// 作用：  中线归一化
-// 作用：  
-// 1) 用图像下方锚点统一中线起点；  
-// 2) 若中线已到达锚点附近 -> 从最近点截断；  
-// 3) 若中线未到锚点 -> 用直线把锚点连接到原中线首点；  
-// 4) 最后重新等距采样，得到稳定可控的中线。  
-//  
-// 依赖：resample_points(), limit_int()  
-// 常量：EDGELINE_MAX, UVC_WIDTH, UVC_HEIGHT  
-  
+/**
+ * @brief 结合图像底部锚点对中线进行统一化处理
+ *        1) 用图像下方锚点统一中线起点
+ *        2) 若中线已到达锚点附近，从最近点截断
+ *        3) 若中线未到锚点，用直线强制连接锚点到原中线首点
+ * 
+ * @param pts_in  输入的中线点集
+ * @param in_num  输入中线点数
+ * @param pts_out 归一化后的输出中线点集
+ * @param out_num 归一化后的输出中线点数
+ */
+
 void normalize_midline_with_anchor(float pts_in[][2], int in_num, float pts_out[][2], int *out_num)  
 {  
     if (!out_num) return;  
@@ -702,7 +746,14 @@ void build_midline_from_compressed_lr(const float left_pts[][2], int left_num,
   
     *mid_num = k;  
 }  
-// 点集局部角度变化率
+/**
+ * @brief 计算点集的局部角度变化率，用于弯道或者拐点特征检测
+ * 
+ * @param pts_in    输入点集
+ * @param num       点集数量
+ * @param angle_out 传出各点对应的角度变化率（弧度）
+ * @param dist      计算向量的步长跨度
+ */
 void local_angle_points(float pts_in[][2], int num, float angle_out[], int dist)
  {
     for (int i = 0; i < num; i++) {
@@ -723,7 +774,14 @@ void local_angle_points(float pts_in[][2], int num, float angle_out[], int dist)
         angle_out[i] = atan2f(c1 * s2 - c2 * s1, c2 * c1 + s2 * s1);
     }
 }
-// 角度变化率非极大抑制
+/**
+ * @brief 对角度变化率数组进行一维非极大值抑制（NMS），以提取局部极大极小点
+ * 
+ * @param angle_in  输入的原始角度数组
+ * @param num       角度数组长度
+ * @param angle_out 抑制后的角度数组（非极值点将被清零）
+ * @param kernel    滑动窗口核心大小（抑制范围）
+ */
 void nms_angle(float angle_in[], int num, float angle_out[], int kernel) 
 {
     int half = kernel / 2;
@@ -739,7 +797,14 @@ void nms_angle(float angle_in[], int num, float angle_out[], int kernel)
         }
     }
 }
-//返回角度最大值
+/**
+ * @brief 从角度变化率数组中找到绝对值最大的角度及其索引点
+ * 
+ * @param angle_in  角度数组
+ * @param num       数组长度
+ * @param angle_max 传出最大角度（保留原有符号）
+ * @param idx       传出最大角度对应的索引
+ */
 void max_angle(float angle_in[], int num, float *angle_max, int *idx)  
 {  
     *angle_max = 0.0f;  

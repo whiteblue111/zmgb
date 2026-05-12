@@ -5,12 +5,17 @@
 #include <algorithm>
 #include <opencv2/opencv.hpp>
 #include <ncnn/net.h>
+#include <cstdio>
+#include <sys/time.h>
+#include <csignal>
 
 using namespace std;
 using namespace cv;
 
 int red_area = 0; // 全局变量，记录当前检测到的红色区域面积
 float aspect_ratio = 0.0f; // 全局变量，记录当前检测到
+
+extern volatile sig_atomic_t g_dbg_stage_id;
 
 // 实例化一个本文件内部使用的检测器
 static RedRectDetector my_detector;
@@ -120,9 +125,43 @@ bool RedRectDetector::model_roi_cut(Mat& img, Mat& roi, bool is_draw) {
 // 流水线主函数实现
 // =============================================================================
 void process_car_vision(cv::Mat& frame) {
+    g_dbg_stage_id = 31;
+    // #region agent log
+    static int s_dbg_vision_entry_cnt = 0;
+    if (s_dbg_vision_entry_cnt < 8) {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+        FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+        if (debug_log) {
+            fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H5\",\"location\":\"vision.cpp:process_car_vision:entry\",\"message\":\"vision entry frame info\",\"data\":{\"rows\":%d,\"cols\":%d,\"channels\":%d,\"empty\":%d},\"timestamp\":%lld}\n", frame.rows, frame.cols, frame.channels(), frame.empty() ? 1 : 0, ts_ms);
+            fclose(debug_log);
+        }
+        s_dbg_vision_entry_cnt++;
+    }
+    // #endregion
+
     cv::Mat roi;
     
-    if (my_detector.model_roi_cut(frame, roi, true)) {
+    const bool has_roi = my_detector.model_roi_cut(frame, roi, true);
+    g_dbg_stage_id = 32;
+    // #region agent log
+    static int s_dbg_vision_roi_cnt = 0;
+    if (s_dbg_vision_roi_cnt < 8) {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+        FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+        if (debug_log) {
+            fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H1\",\"location\":\"vision.cpp:process_car_vision:roi\",\"message\":\"roi cut result\",\"data\":{\"has_roi\":%d,\"roi_rows\":%d,\"roi_cols\":%d,\"block_w\":%d,\"block_h\":%d},\"timestamp\":%lld}\n", has_roi ? 1 : 0, roi.rows, roi.cols, block_w, block_h, ts_ms);
+            fclose(debug_log);
+        }
+        s_dbg_vision_roi_cnt++;
+    }
+    // #endregion
+
+    if (has_roi) {
+        g_dbg_stage_id = 33;
         // ✨ [新增] 调试抓拍逻辑开始
         // static int snapshot_cnt = 0; // 静态计数器
         // if (snapshot_cnt < 5) {
@@ -148,9 +187,24 @@ void process_car_vision(cv::Mat& frame) {
         in.substract_mean_normalize(mean_vals, norm_vals);
 
         ncnn::Extractor ex = my_net.create_extractor();
-        ex.input("in0", in); 
+        const int in_ret = ex.input("in0", in); 
         ncnn::Mat out;
-        ex.extract("out0", out);
+        const int out_ret = ex.extract("out0", out);
+        g_dbg_stage_id = 34;
+        // #region agent log
+        static int s_dbg_vision_ncnn_cnt = 0;
+        if (s_dbg_vision_ncnn_cnt < 8) {
+            struct timeval tv;
+            gettimeofday(&tv, nullptr);
+            const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+            FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+            if (debug_log) {
+                fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H1\",\"location\":\"vision.cpp:process_car_vision:ncnn\",\"message\":\"ncnn io status\",\"data\":{\"in_ret\":%d,\"out_ret\":%d,\"out_w\":%d,\"out_h\":%d,\"out_c\":%d},\"timestamp\":%lld}\n", in_ret, out_ret, out.w, out.h, out.c, ts_ms);
+                fclose(debug_log);
+            }
+            s_dbg_vision_ncnn_cnt++;
+        }
+        // #endregion
 
         // 前面的 NCNN 提取结果代码保持不变...
         float max_prob = -100.0f;
@@ -161,6 +215,21 @@ void process_car_vision(cv::Mat& frame) {
                 max_index = i;
             }
         }
+        g_dbg_stage_id = 35;
+        // #region agent log
+        static int s_dbg_vision_pred_cnt = 0;
+        if (s_dbg_vision_pred_cnt < 8) {
+            struct timeval tv;
+            gettimeofday(&tv, nullptr);
+            const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+            FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+            if (debug_log) {
+                fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H4\",\"location\":\"vision.cpp:process_car_vision:pred\",\"message\":\"prediction result before debounce\",\"data\":{\"max_index\":%d,\"max_prob\":%.6f,\"out_w\":%d},\"timestamp\":%lld}\n", max_index, max_prob, out.w, ts_ms);
+                fclose(debug_log);
+            }
+            s_dbg_vision_pred_cnt++;
+        }
+        // #endregion
 
         // ✨ [修改点] 引入消抖滤波机制的三个静态变量
         static int confirmed_index = -2; // 真正被确认并正在执行的“官方结果”
@@ -184,11 +253,32 @@ void process_car_vision(cv::Mat& frame) {
             
             // 3. 如果这个新确认的结果，和我们之前一直在执行的“官方结果”不一样，才触发动作和打印
             if (candidate_index != confirmed_index) {
+                g_dbg_stage_id = 36;
                 
                 std::vector<std::string> labels = {"Ambulance", "Armored vehicle", "Binoculars", "Grenade", "Guns", "medical"};
+                // #region agent log
+                static int s_dbg_vision_label_cnt = 0;
+                if (s_dbg_vision_label_cnt < 8) {
+                    struct timeval tv;
+                    gettimeofday(&tv, nullptr);
+                    const long long ts_ms = (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
+                    FILE* debug_log = fopen("/home/lq/LS2K0300_Library/.cursor/debug-4df1ba.log", "a");
+                    if (debug_log) {
+                        fprintf(debug_log, "{\"sessionId\":\"4df1ba\",\"runId\":\"pre-fix\",\"hypothesisId\":\"H4\",\"location\":\"vision.cpp:process_car_vision:label\",\"message\":\"before labels index access\",\"data\":{\"candidate_index\":%d,\"labels_size\":%zu,\"confirmed_index\":%d,\"consecutive_cnt\":%d},\"timestamp\":%lld}\n", candidate_index, labels.size(), confirmed_index, consecutive_cnt, ts_ms);
+                        fclose(debug_log);
+                    }
+                    s_dbg_vision_label_cnt++;
+                }
+                // #endregion
                 
                 // ... 前面的代码不变 ...
                 if (candidate_index >= 0) {
+                    g_dbg_stage_id = 37;
+                    // #region agent log
+                    if ((candidate_index >= (int)labels.size()) || (candidate_index < 0)) {
+                        fprintf(stderr, "[termdbg] vision invalid label index=%d labels_size=%zu\n", candidate_index, labels.size());
+                    }
+                    // #endregion
                     std::cout << "[智能视觉] 连续 3 帧确认目标: " << labels[candidate_index] << std::endl;
                     if (candidate_index == 2 && !g_is_bypassing_binoculars) {
                         std::cout << "🔭 发现望远镜！准备向左侧绕行！" << std::endl;
@@ -202,11 +292,14 @@ void process_car_vision(cv::Mat& frame) {
                     // ✨ 加入总数上限限制（比如最多只存 5 次）
                     static int valid_hit_cnt = 0; 
                     if (valid_hit_cnt < 5) {
+                        g_dbg_stage_id = 38;
                         std::string roi_name = "target_" + std::to_string(valid_hit_cnt) + "_" + labels[candidate_index] + "_roi.jpg";
                         std::string full_name = "target_" + std::to_string(valid_hit_cnt) + "_full.jpg";
                         
                         cv::imwrite(roi_name, roi);
+                        g_dbg_stage_id = 39;
                         cv::imwrite(full_name, frame);
+                        g_dbg_stage_id = 40;
                         
                         std::cout << "📸 抓拍成功！已保存: " << roi_name << " (进度: " << valid_hit_cnt + 1 << "/5)" << std::endl;
                         valid_hit_cnt++;
@@ -222,7 +315,9 @@ void process_car_vision(cv::Mat& frame) {
 
                 // 4. 将候选结果转正，更新为官方结果
                 confirmed_index = candidate_index;
+                g_dbg_stage_id = 41;
             }
         }
     }
+    g_dbg_stage_id = 42;
 }
