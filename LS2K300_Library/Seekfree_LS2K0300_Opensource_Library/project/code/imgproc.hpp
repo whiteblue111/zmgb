@@ -26,7 +26,7 @@ void find_right_base(Mat img,int *x, int *y);
 void findline_lefthand_adaptive(Mat img, int x, int y, float pts[][2], int *num);
 void findline_righthand_adaptive(Mat img, int x, int y, float pts[][2], int *num);
 void resample_points(float pts_in[][2], int num1, float pts_out[][2], int *num2, float dist);
-void blur_points(float pts_in[][2], int num, float pts_out[][2], int kernel) ;
+void blur_points(int pts_in[][2], int num, float pts_out[][2], int kernel) ;
 void track_rightline(float pts_in[][2], int num_in, float pts_out[][2], int& num_out, int approx_num, float dist);
 void track_leftline(float pts_in[][2], int num_in, float pts_out[][2],int& num_out, int approx_num, float dist)   ;
 void normalize_midline_with_anchor(float pts_in[][2], int in_num, float pts_out[][2], int *out_num);
@@ -36,6 +36,30 @@ void add_black_border_half(cv::Mat &bin, int thickness);
 void compress_line_one_point_per_row(const float in_pts[][2], int in_num,  
                                      float out_pts[][2], int *out_num,  
                                      bool is_left_line)  ;
+
+
+void extract_left_border_per_row(const int pts_in[][2], int in_num,
+                                 int left_border_per_row[],
+                                 int left_border_index_per_row[],
+                                 int default_left_x,
+                                 int clamp_margin);
+/**
+ * @brief 基于右边线点集生成逐行右边界
+ * @param pts_in                     输入右边线点集（单位：像素）
+ * @param in_num                     输入点数量
+ * @param right_border_per_row       输出每行右边界 x（单位：像素）
+ * @param right_border_index_per_row 输出每行对应原始点索引（无点为 -1）
+ * @param default_right_x            默认右边界/限幅基准（单位：像素）
+ * @param clamp_margin               限幅裕量（单位：像素）
+ * @return 无返回值
+ * @sample extract_right_border_per_row(rpts_r, rpts_r_num, right_border, right_idx, UVC_WIDTH - 2, 4);
+ * @note 保留原 get_right 的核心语义：每行只取一个点，并将过近右边界的点钳制到默认值。
+ */
+void extract_right_border_per_row(const int pts_in[][2], int in_num,
+                                  int right_border_per_row[],
+                                  int right_border_index_per_row[],
+                                  int default_right_x,
+                                  int clamp_margin);
 void build_midline_from_compressed_lr(const float left_pts[][2], int left_num,  
                                       const float right_pts[][2], int right_num,  
                                       float mid_pts[][2], int *mid_num)  ; 

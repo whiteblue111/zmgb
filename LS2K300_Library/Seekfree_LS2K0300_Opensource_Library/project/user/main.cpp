@@ -236,6 +236,10 @@ uint8 left_x  [UVC_HEIGHT];
 uint8 right_x [UVC_HEIGHT];    
 uint8 center_x[UVC_HEIGHT];    
 uint8 row_y   [UVC_HEIGHT];    
+int left_border_per_row[UVC_HEIGHT] = {0};
+int left_border_index_per_row[UVC_HEIGHT] = {0};
+int right_border_per_row[UVC_HEIGHT] = {0};
+int right_border_index_per_row[UVC_HEIGHT] = {0};
 
 // 图像与中线相关  
 float ipts_l[EDGELINE_MAX][2] = {0};  
@@ -246,8 +250,8 @@ int   ipts_r_num = 0;
 volatile sig_atomic_t g_dbg_frame_id = 0;
 volatile sig_atomic_t g_dbg_stage_id = 0;
 
-float rpts_l[POINTS_MAX_LEN][2] = {0};  
-float rpts_r[POINTS_MAX_LEN][2] = {0};  
+int rpts_l[POINTS_MAX_LEN][2] = {0};  
+int rpts_r[POINTS_MAX_LEN][2] = {0};  
 int   rpts_l_num = 0;  
 int   rpts_r_num = 0;  
   
@@ -715,6 +719,8 @@ int main()
           
         /* -------- 4. 构造二值Mat -------- */    
         cv::Mat bin_mat(UVC_HEIGHT, UVC_WIDTH, CV_8UC1, image_bin[0]); 
+        /*---------------5.画黑框-----------------*/
+        add_black_border(bin_mat, 2); 
 
         /* -------- 6. 寻找左右边线起点 -------- */    
         int sx_l = 80, sy_l = UVC_HEIGHT - 5;    
@@ -771,24 +777,41 @@ int main()
             }
         } 
 
-        // 9) 逆透视后左右边线等距采样（新增核心）  
+
+        extract_left_border_per_row(rpts_l, rpts_l_num,
+                                    left_border_per_row, left_border_index_per_row,
+                                    2, 4);
+        extract_right_border_per_row(rpts_r, rpts_r_num,
+                                     right_border_per_row, right_border_index_per_row,
+                                     UVC_WIDTH - 3, 4);
+        for (int y = 0; y < UVC_HEIGHT; y++) {
+            left_x[y] = (uint8)limit_int(left_border_per_row[y], 0, UVC_WIDTH - 1);
+            right_x[y] = (uint8)limit_int(right_border_per_row[y], 0, UVC_WIDTH - 1);
+            row_y[y] = (uint8)y;
+        }
+        
+
+        // 9) 逆透视后左右边线等距采样
         rpts_l_resample_num  = EDGELINE_MAX;  
         rpts_r_resample_num = EDGELINE_MAX;   
   
         if (rpts_l_num > 2) {  
             blur_points(rpts_l, rpts_l_num, rpts_l_blur, blur_dist);  
-            resample_points(rpts_l_blur, rpts_l_num, rpts_l_resample, &rpts_l_resample_num, resample_dist);  
-        } else {  
+        
+            resample_points(rpts_l_blur, rpts_l_num, rpts_l_resample, &rpts_l_resample_num, resample_dist); 
+        } 
+          else {  
             rpts_l_resample_num = 0;  
         }  
   
         if (rpts_r_num > 2) {  
             blur_points(rpts_r, rpts_r_num, rpts_r_blur, blur_dist);  
+        
             resample_points(rpts_r_blur, rpts_r_num, rpts_r_resample, &rpts_r_resample_num, resample_dist);  
-        } else {  
+        }
+         else {  
             rpts_r_resample_num = 0;  
         }  
-        g_dbg_stage_id = 90;
         // 根据左右等距采样点数选择跟踪边  
         // 可加一个最小差值，避免来回抖动  
         const int switch_margin = 3;  

@@ -363,7 +363,7 @@ void find_right_base(Mat img, int *x, int *y)
  * @param pts_out 滤波后输出点集
  * @param kernel  滤波核大小（必须为奇数）
  */
-void blur_points(float pts_in[][2], int num, float pts_out[][2], int kernel) 
+void blur_points(int pts_in[][2], int num, float pts_out[][2], int kernel) 
 {
     assert(kernel % 2 == 1);
     int half = kernel / 2;
@@ -649,65 +649,89 @@ void add_black_border(cv::Mat &bin, int thickness)
         for (int x = w - thickness; x < w; x++) p[x] = 0;  
     }  
  }
-// 作用：将迷宫巡线输出点集压缩为“每行仅一个点”  
-// 策略：同一行取最靠内的点（左线取该行最大x，右线取该行最小x）  
-// 输入  pts_in/in_num  : 原始迷宫点集  
-// 输出  pts_out/out_num: 每行一个点后的点集（按 y 从大到小排序，便于后续控制）  
-void compress_line_one_point_per_row(const float pts_in[][2], int in_num,  
-                                     float pts_out[][2], int *out_num,  
-                                     bool is_left_line)  
-{  
-    if (!out_num) return;  
-    *out_num = 0;  
-    if (!pts_in || !pts_out || in_num <= 0) return;  
-  
-    // 每行是否已有点  
-    bool  used[UVC_HEIGHT] = {false};  
-    float best_x[UVC_HEIGHT];  
-    float best_y[UVC_HEIGHT];  
-  
-    // 初始化  
-    for (int y = 0; y < UVC_HEIGHT; y++) {  
-        best_x[y] = is_left_line ? -1e9f : 1e9f;  
-        best_y[y] = (float)y;  
-    }  
-  
-    // 扫描原点集，按“每行最优x”更新  
-    for (int i = 0; i < in_num; i++)  
-    {  
-        int yi = (int)(pts_in[i][1] + 0.5f);  
-        if (yi < 0 || yi >= UVC_HEIGHT) continue;  
-  
-        float xi = pts_in[i][0];  
-        if (xi < 0 || xi >= UVC_WIDTH) continue;  
-  
-        if (!used[yi]) {  
-            used[yi] = true;  
-            best_x[yi] = xi;  
-        } else {  
-            if (is_left_line) {  
-                // 左线取该行最大x（靠中间）  
-                if (xi > best_x[yi]) best_x[yi] = xi;  
-            } else {  
-                // 右线取该行最小x（靠中间）  
-                if (xi < best_x[yi]) best_x[yi] = xi;  
-            }  
-        }  
-    }  
-  
-    // 按 y 从大到小输出（靠近车体优先）  
-    int k = 0;  
-    for (int y = UVC_HEIGHT - 1; y >= 0; y--)  
-    {  
-        if (!used[y]) continue;  
-        pts_out[k][0] = best_x[y];  
-        pts_out[k][1] = best_y[y];  
-        k++;  
-        if (k >= EDGELINE_MAX) break;  
-    }  
-  
-    *out_num = k;  
-}  
+
+/**
+ * @brief 基于左边线点集生成逐行左边界
+ * @param pts_in                    输入左边线点集（单位：像素）
+ * @param in_num                    输入点数量
+ * @param left_border_per_row       输出每行左边界 x（单位：像素）
+ * @param left_border_index_per_row 输出每行对应的原始点索引（无点为 -1）
+ * @param default_left_x            默认左边界/限幅基准（单位：像素）
+ * @param clamp_margin              限幅裕量（单位：像素）
+ * @return 无返回值
+ * @sample extract_left_border_per_row(rpts_l, rpts_l_num, left_border, left_idx, 1, 4);
+ * @note 保留原 get_left 的核心语义：每行只取一个点，并将过近左边界的点钳制到默认值。
+ */
+void extract_left_border_per_row(const int pts_in[][2], int in_num,
+                                 int left_border_per_row[],
+                                 int left_border_index_per_row[],
+                                 int default_left_x,
+                                 int clamp_margin)
+{
+    if (!pts_in || !left_border_per_row || !left_border_index_per_row) return;
+
+    for (int y = 0; y < UVC_HEIGHT; y++) {
+        left_border_per_row[y] = default_left_x;
+        left_border_index_per_row[y] = -1;
+    }
+
+    for (int i = 0; i < in_num; i++) {
+        int x = pts_in[i][0];
+        int y = pts_in[i][1];
+        if (y < 0 || y >= UVC_HEIGHT) continue;
+
+        int candidate_x = x + 1;
+        if (candidate_x <= default_left_x + clamp_margin) {
+            candidate_x = default_left_x;
+        }
+
+        if (left_border_index_per_row[y] < 0 || candidate_x > left_border_per_row[y]) {
+            left_border_per_row[y] = candidate_x;
+            left_border_index_per_row[y] = i;
+        }
+    }
+}
+/**
+ * @brief 基于右边线点集生成逐行右边界
+ * @param pts_in                     输入右边线点集（单位：像素）
+ * @param in_num                     输入点数量
+ * @param right_border_per_row       输出每行右边界 x（单位：像素）
+ * @param right_border_index_per_row 输出每行对应原始点索引（无点为 -1）
+ * @param default_right_x            默认右边界/限幅基准（单位：像素）
+ * @param clamp_margin               限幅裕量（单位：像素）
+ * @return 无返回值
+ * @sample extract_right_border_per_row(rpts_r, rpts_r_num, right_border, right_idx, UVC_WIDTH - 2, 4);
+ * @note 保留原 get_right 的核心语义：每行只取一个点，并将过近右边界的点钳制到默认值。
+ */
+void extract_right_border_per_row(const int pts_in[][2], int in_num,
+                                  int right_border_per_row[],
+                                  int right_border_index_per_row[],
+                                  int default_right_x,
+                                  int clamp_margin)
+{
+    if (!pts_in || !right_border_per_row || !right_border_index_per_row) return;
+
+    for (int y = 0; y < UVC_HEIGHT; y++) {
+        right_border_per_row[y] = default_right_x;
+        right_border_index_per_row[y] = -1;
+    }
+
+    for (int i = 0; i < in_num; i++) {
+        int x = pts_in[i][0];
+        int y = pts_in[i][1];
+        if (y < 0 || y >= UVC_HEIGHT) continue;
+
+        int candidate_x = x - 1;
+        if (candidate_x >= default_right_x - clamp_margin) {
+            candidate_x = default_right_x;
+        }
+
+        if (right_border_index_per_row[y] < 0 || candidate_x < right_border_per_row[y]) {
+            right_border_per_row[y] = candidate_x;
+            right_border_index_per_row[y] = i;
+        }
+    }
+}
 // 输入：已压缩后的左右边线（每行至多一个点）  
 // 输出：中线点集（同样每行一个点）  
 void build_midline_from_compressed_lr(const float left_pts[][2], int left_num,  
